@@ -1,0 +1,140 @@
+syntax = "proto3";
+
+
+// NOTE: We can change this name!!
+package message_server;
+
+// The service definition.
+service MessageServer {
+    rpc Register (RegisterRequest) returns (RegisterResponse);
+    rpc Login (LoginRequest) returns (LoginResponse);
+    rpc GetUsers (GetUsersRequest) returns (stream GetUsersResponse);
+    rpc SendMessage (Message) returns (MessageResponse);
+    // Stream because it is an array of messages
+    rpc GetPendingMessage (PendingMessageRequest) returns (stream PendingMessageResponse);
+    // Stream because we are subscribing for updates
+    rpc MonitorMessages (MonitorMessagesRequest) returns (stream Message);
+    rpc DeleteAccount (DeleteAccountRequest) returns (DeleteAccountResponse);
+    rpc SaveSettings (SaveSettingsRequest) returns (SaveSettingsResponse);
+    rpc GetSettings (GetSettingsRequest) returns (GetSettingsResponse);
+}
+
+// Register Users
+message RegisterRequest {
+    string username = 1;
+    string password = 2;
+    string email = 3;
+}
+
+// NOTE: do we want this to have anything besides a success or failure?
+message RegisterResponse {
+    enum RegisterStatus {
+        SUCCESS = 0;
+        FAILURE = 1;
+    }
+    RegisterStatus status = 1;
+    string message = 2;
+}
+
+// LOGIN
+message LoginRequest {
+    string username = 1;
+    string password = 2;
+}
+
+// NOTE: do we want this to have anything besides a success or failure?
+message LoginResponse {
+    enum LoginStatus {
+        SUCCESS = 0;
+        FAILURE = 1;
+    }
+    LoginStatus status = 1;
+    string message = 2;
+}
+
+// Get Users
+message GetUsersRequest {
+    string username = 1;
+}
+
+message GetUsersResponse {
+    enum GetUsersStatus {
+        SUCCESS = 0;
+        FAILURE = 1;
+    }
+    GetUsersStatus status = 1;
+    string username = 2;
+}
+
+// For returning a list of something, we could use an rpc stream of an item?
+
+message Message {
+    string sender = 1;
+    string recipient = 2;
+    string message = 3;
+    string timestamp = 4;
+}
+
+message MonitorMessagesRequest {
+    string username = 1;
+}
+
+message MessageResponse {
+    enum MessageStatus {
+        SUCCESS = 0;
+        FAILURE = 1;
+    }
+    MessageStatus status = 1;
+}
+
+message PendingMessageRequest {
+    string username = 1;
+    int32 inbox_limit = 2;
+}
+
+message PendingMessageResponse {
+    enum PendingMessageStatus {
+        SUCCESS = 0;
+        FAILURE = 1;
+    }
+    PendingMessageStatus status = 1;
+    Message message = 2;
+}
+
+message DeleteAccountRequest {
+    string username = 1;
+}
+
+message DeleteAccountResponse {
+    enum DeleteAccountStatus {
+        SUCCESS = 0;
+        FAILURE = 1;
+    }
+    DeleteAccountStatus status = 1; 
+}
+
+message SaveSettingsRequest {
+    string username = 1;
+    int32 setting = 2;
+}
+
+message SaveSettingsResponse {
+    enum SaveSettingsStatus {
+        SUCCESS = 0;
+        FAILURE = 1;
+    }
+    SaveSettingsStatus status = 1; 
+}
+
+message GetSettingsRequest {
+    string username = 1;
+}
+
+message GetSettingsResponse {
+    enum GetSettingsStatus {
+        SUCCESS = 0;
+        FAILURE = 1;
+    }
+    GetSettingsStatus status = 1; 
+    int32 setting = 2;
+}

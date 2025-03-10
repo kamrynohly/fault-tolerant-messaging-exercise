@@ -1,0 +1,5 @@
+grpcio @ file:///private/var/folders/sy/f16zz6x50xz3113nwtb9bvq00000gp/T/abs_35t8120i87/croot/grpc-split_1716834576536/work
+grpcio-tools @ file:///private/var/folders/c_/qfmhj66j0tn016nkx_th4hxm0000gp/T/abs_ac0kdi6u0e/croot/grpcio-tools_1721915941488/work
+protobuf==4.25.3
+setuptools==75.8.0
+wheel==0.45.1
