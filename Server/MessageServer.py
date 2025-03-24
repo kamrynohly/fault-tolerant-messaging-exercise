@@ -2,7 +2,7 @@ import sys
 import os
 import grpc
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 # import argparse
 import logging
 # import socket # For retrieving local IP address only
@@ -14,6 +14,7 @@ from proto import service_pb2
 from proto import service_pb2_grpc
 from AuthHandler import AuthHandler
 from DatabaseManager import DatabaseManager
+import threading
 
 # MARK: Initialize Logger
 # Configure logging set-up. We want to log times & types of logs, as well as
@@ -45,6 +46,8 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
         logger.info(f"Server created with UUID: {self.server_id}")
         self.leader = None # Do not immediately declare self as leader, otherwise could accidentally have two.
         self.servers = {}  # Dictionary to store replica servers (key: server_id, value: {"ip": ip, "port": port, "heartbeat": last timestamp})
+
+        self.heartbeatThread = threading.Thread(target=self._heartbeat, daemon=True)
 
         self.setup_replicas() # Handle declaring self as leader and checking initial status of replicas
 
@@ -440,7 +443,7 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
         # First, this will act as the leader by default.
         # If this is the first server to launch, then things are fairly simple, but
         # we have to consider the case that the server has crashed and is rebooting.
-        pass
+        self.heartbeatThread.start()
 
     def NewReplica(self, request, context):
         # A new server will call this function first to inform the leader that they now exist.
@@ -449,7 +452,7 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
         #       2: Add this server to list of current servers
         print(request)
         DatabaseManager.add_server(request.new_replica_id, request.ip_addr, request.port)
-        self.servers[request.new_replica_id] = {"ip": request.ip_addr, "port": request.port, "timestamp": datetime.now()}
+        self.servers[request.new_replica_id] = {"ip": request.ip_addr, "port": request.port, "heartbeat": datetime.now()}
 
         # TODO: DONT HARDCODE!!!
         return service_pb2.LeaderResponse(id=self.server_id, ip="127.0.0.1", port="5001")
@@ -464,18 +467,33 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
     def update_heartbeat(self, id):
         print(id)
         # Update heartbeat timestamp for the server
-        self.servers[id]["heartbeat"] = int(datetime.now().timestamp())
+        self.servers[id]["heartbeat"] = datetime.now()
         logger.info(f"Heartbeat from {id} updated at {self.servers[id]}")
    
     def check_and_remove_failed_replicas(self):
+        print("checking heartbeats!", self.servers)
         # Remove replicas that haven't sent a heartbeat in the last 10 seconds
-        current_time = datetime.time()
+        current_time = datetime.now()
+        failed_replicas = []
         for server_id, info in self.servers.items():
             last_heartbeat = info["heartbeat"]
-            if current_time - last_heartbeat > 10:  # For example, 10 seconds timeout
-                print("Server has failed!!!! Removing now!")
-                del self.servers[server_id]
-                DatabaseManager.remove_server(server_id)
+            
+            # Ensure last_heartbeat is a datetime object, if not convert it.
+            if isinstance(last_heartbeat, str):  # If it's a string, for example
+                last_heartbeat = datetime.fromisoformat(last_heartbeat)  # Convert string to datetime
+            
+            # Check the difference between current time and last heartbeat
+            if current_time - last_heartbeat > timedelta(seconds=10):
+                print(f"Server {server_id} has failed!!!! Removing now!")
+                failed_replicas.append(server_id)
+        
+        for id in failed_replicas:
+            del self.servers[id]
+            DatabaseManager.remove_server(server_id)
+
+    def _heartbeat(self):
+        self.check_and_remove_failed_replicas()
+        threading.Timer(5, self._heartbeat).start()  # Schedule the next heartbeat in 2 seconds
 
     def GetServers(self, request, context):
         servers = DatabaseManager.get_servers()
@@ -483,80 +501,3 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
         for server in servers:
             serialized_server = service_pb2.ServerInfoResponse(id=server["server_id"], ip=server["ip"], port=server["port"])
             yield serialized_server
-
-    # MARK: Load Balancer
-    # class LoadBalancer:
-
-    #     def __init__(self, server):
-    #         self.server = server
-    #         self.server_id = server.server_id
-    #         self.servers = {}  # Dictionary to store replica servers (key: server_id, value: last heartbeat timestamp)
-    #         self.leader = None
-    #         self.setup()
-
-    #     def setup(self):
-    #         # STEPS:
-    #         #   1: Check what other servers exist and announce ourself
-    #         #   2: Start our heartbeats
-    #         #   3: Who is the leader?
-
-    #         # Check other servers
-    #         servers = DatabaseManager.get_servers()
-
-    #         # Check server statuses by sending heartbeats, allowing other servers to update their tables too!
-    #         # TODO!!!
-    #         for server in servers:
-    #             self.servers[server] = None
-
-    #         # Add this server to the database
-    #         DatabaseManager.add_server(self.server_id)
-
-    #         # Check who is the leader and/or declare self as leader
-    #         leader = DatabaseManager.check_leader()
-    #         print("LEADER returned is", leader)
-    #         if not leader:
-    #             DatabaseManager.new_leader(self.server_id)
-    #             print("SERVER SET TO BE NEW LEADER")
-    #         else:
-    #             self.leader = leader
-    #             print("LEADER IS ", leader)            
-
-    #     def update_heartbeat(self, server_id):
-    #         # Update heartbeat timestamp for the server
-    #         self.servers[server_id] = datetime.now()
-    #         logger.info(f"Heartbeat from {server_id} updated at {self.servers[server_id]}")
-
-        # def check_and_remove_failed_replicas(self):
-        #     # Remove replicas that haven't sent a heartbeat in the last 10 seconds
-        #     current_time = datetime.time()
-        #     failed_servers = []
-        #     for server_id, last_heartbeat in self.replicas.items():
-        #         if current_time - last_heartbeat > 10:  # For example, 10 seconds timeout
-        #             failed_servers.append(server_id)
-
-        #     for server_id in failed_servers:
-        #         print(f"Removing failed replica: {server_id}")
-        #         del self.servers[server_id]
-
-        # def get_healthy_replicas(self):
-        #     # Return list of all healthy replicas
-        #     self.check_and_remove_failed_replicas()
-        #     return list(self.servers.keys())
-    
-    # # MARK: Fault Tolerance
-    # def NewReplica(self, request : service_pb2.NewReplicaRequest, context) -> service_pb2.NewReplicaResponse:
-    #     # A new server will call this function first to inform the leader that they now exist.
-    #     # Do a couple of things
-    #     #       1: Denote in SQL
-        
-    #     pass
-
-    # def Heartbeat(self, request : service_pb2.HeartbeatRequest, context) -> service_pb2.HeartbeatResponse:
-    #     requestor_id = request.requestor_id
-    #     server_id = request.server_id
-    #     print(f"Heartbeat requested from server: {requestor_id} reaching out to server: {server_id}")
-    #     self.load_balancer.update_heartbeat(server_id)
-    #     return service_pb2.HeartbeatResponse(status="Heartbeat received")
-    
-    # def ElectLeader(self, request, context):
-    #     pass

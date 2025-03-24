@@ -2,7 +2,7 @@ import sys
 import os
 import grpc
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 # import argparse
 import logging
 # import socket # For retrieving local IP address only
@@ -54,7 +54,6 @@ class ReplicaServer(service_pb2_grpc.MessageServerServicer):
         self.leader_server_stub = primary_server
         self.isReady = False
 
-        # Create a background task for monitoring for new messages from the server.
         self.heartbeatThread = threading.Thread(target=self._heartbeat, daemon=True)
 
         self.setup()
@@ -73,8 +72,9 @@ class ReplicaServer(service_pb2_grpc.MessageServerServicer):
         for server in servers:
             print(server)
             if not server.id == self.server_id:
-                self.servers[server.id] = {"ip": server.ip, "port": server.port, "heartbeat": int(datetime.now().timestamp())}
-        
+                self.servers[server.id] = {"ip": server.ip, "port": server.port, "heartbeat": datetime.now()}
+        # Add the leader to the server list
+        self.servers[self.leader] = {"ip": response.ip, "port": response.port, "heartbeat": datetime.now()}
         # Start heartbeat
         self.heartbeatThread.start()
 
@@ -463,54 +463,68 @@ class ReplicaServer(service_pb2_grpc.MessageServerServicer):
                 setting=0
             )
 
-    # # MARK: Fault Tolerance
-    # def NewReplica(self, request : service_pb2.NewReplicaRequest, context) -> service_pb2.NewReplicaResponse:
+    # MARK: Fault Tolerance
+
+    # def NewReplica(self, request, context):
     #     # A new server will call this function first to inform the leader that they now exist.
-    #     # If this is the first server, then 
-    #     pass
+    #     # Do a couple of things
+    #     #       1: Update this server in SQL db
+    #     #       2: Add this server to list of current servers
+    #     DatabaseManager.add_server(request.new_replica_id, request.ip_addr, request.port)
+    #     self.servers[request.new_replica_id] = {"ip": request.ip_addr, "port": request.port, "heartbeat": datetime.now()}
+
+    #     # TODO: DONT HARDCODE!!!
+    #     return service_pb2.LeaderResponse(id=self.server_id, ip="127.0.0.1", port="5001")
+
 
     def Heartbeat(self, request : service_pb2.HeartbeatRequest, context) -> service_pb2.HeartbeatResponse:
         requestor_id = request.requestor_id
         server_id = request.server_id
-        print(f"Heartbeat requested from server: {requestor_id} reaching out to server: {server_id}")
+        logger.info(f"Heartbeat requested from server: {requestor_id} reaching out to server: {server_id}")
         # Since we heard from this other server, it is still alive!
         self.update_heartbeat(requestor_id)
         # Respond that this replica is alive.
         return service_pb2.HeartbeatResponse(status="Heartbeat received")
-    
+
     def update_heartbeat(self, id):
-        print("in update heartbeat")
+        print(id)
         # Update heartbeat timestamp for the server
-        self.servers[id]["heartbeat"] = int(datetime.now().timestamp())
+        self.servers[id]["heartbeat"] = datetime.now()
         logger.info(f"Heartbeat from {id} updated at {self.servers[id]}")
-        print("finished update heartbeat")
    
     def _heartbeat(self):
-        print("in heartbeat!")
         for id in self.servers:
-            threading.Timer(2, self._send_heartbeat, args=(id,)).start()  # Schedule the next heartbeat in 2 seconds
+            # Create the stub for each server
+            try:
+                server_channel = grpc.insecure_channel(f'{self.servers[id]["ip"]}:{self.servers[id]["port"]}')  # Replace with actual second server address
+                stub = service_pb2_grpc.MessageServerStub(server_channel)
+                response = stub.Heartbeat(service_pb2.HeartbeatRequest(requestor_id=self.server_id, server_id=id))
+                self.update_heartbeat(id)
+            except Exception as e:
+                logger.error(f"Unable to reach server in _heartbeat with error {e}")
         self.check_and_remove_failed_replicas()
-        threading.Timer(8, self._heartbeat).start()
-
-    def _send_heartbeat(self, id):
-        try:
-            response = self.leader_server_stub.Heartbeat(service_pb2.HeartbeatRequest(requestor_id=self.server_id, server_id=id))
-            self.update_heartbeat(id)
-        except Exception as e:
-            # Failed to get a response!
-            # del self.servers[id]
-            print("TODO")
+        threading.Timer(2, self._heartbeat).start()
 
     def check_and_remove_failed_replicas(self):
-        print("in remove replicas")
+        print("checking heartbeats!", self.servers)
         # Remove replicas that haven't sent a heartbeat in the last 10 seconds
         current_time = datetime.now()
+        failed_replicas = []
         for server_id, info in self.servers.items():
             last_heartbeat = info["heartbeat"]
-            if int(current_time.timestamp()) - last_heartbeat > 10:  # For example, 10 seconds timeout
-                print("Server has failed!!!! Removing now!")
-                DatabaseManager.remove_server(server_id)
-                del self.servers[server_id]
+            
+            # Ensure last_heartbeat is a datetime object, if not convert it.
+            if isinstance(last_heartbeat, str):  # If it's a string, for example
+                last_heartbeat = datetime.fromisoformat(last_heartbeat)  # Convert string to datetime
+            
+            # Check the difference between current time and last heartbeat
+            if current_time - last_heartbeat > timedelta(seconds=10):
+                print(f"Server {server_id} has failed!!!! Removing now!")
+                failed_replicas.append(server_id)
+        
+        for id in failed_replicas:
+            del self.servers[id]
+            DatabaseManager.remove_server(server_id)
 
     # def ElectLeader(self, request, context):
     #     pass
