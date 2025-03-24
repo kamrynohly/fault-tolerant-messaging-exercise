@@ -14,7 +14,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\rservice.proto\x12\x0emessage_server\"D\n\x0fRegisterRequest\x12\x10\n\x08username\x18\x01 \x01(\t\x12\x10\n\x08password\x18\x02 \x01(\t\x12\r\n\x05\x65mail\x18\x03 \x01(\t\"\x90\x01\n\x10RegisterResponse\x12?\n\x06status\x18\x01 \x01(\x0e\x32/.message_server.RegisterResponse.RegisterStatus\x12\x0f\n\x07message\x18\x02 \x01(\t\"*\n\x0eRegisterStatus\x12\x0b\n\x07SUCCESS\x10\x00\x12\x0b\n\x07\x46\x41ILURE\x10\x01\"2\n\x0cLoginRequest\x12\x10\n\x08username\x18\x01 \x01(\t\x12\x10\n\x08password\x18\x02 \x01(\t\"\x84\x01\n\rLoginResponse\x12\x39\n\x06status\x18\x01 \x01(\x0e\x32).message_server.LoginResponse.LoginStatus\x12\x0f\n\x07message\x18\x02 \x01(\t\"\'\n\x0bLoginStatus\x12\x0b\n\x07SUCCESS\x10\x00\x12\x0b\n\x07\x46\x41ILURE\x10\x01\"#\n\x0fGetUsersRequest\x12\x10\n\x08username\x18\x01 \x01(\t\"\x91\x01\n\x10GetUsersResponse\x12?\n\x06status\x18\x01 \x01(\x0e\x32/.message_server.GetUsersResponse.GetUsersStatus\x12\x10\n\x08username\x18\x02 \x01(\t\"*\n\x0eGetUsersStatus\x12\x0b\n\x07SUCCESS\x10\x00\x12\x0b\n\x07\x46\x41ILURE\x10\x01\"P\n\x07Message\x12\x0e\n\x06sender\x18\x01 \x01(\t\x12\x11\n\trecipient\x18\x02 \x01(\t\x12\x0f\n\x07message\x18\x03 \x01(\t\x12\x11\n\ttimestamp\x18\x04 \x01(\t\"*\n\x16MonitorMessagesRequest\x12\x10\n\x08username\x18\x01 \x01(\t\"{\n\x0fMessageResponse\x12=\n\x06status\x18\x01 \x01(\x0e\x32-.message_server.MessageResponse.MessageStatus\")\n\rMessageStatus\x12\x0b\n\x07SUCCESS\x10\x00\x12\x0b\n\x07\x46\x41ILURE\x10\x01\">\n\x15PendingMessageRequest\x12\x10\n\x08username\x18\x01 \x01(\t\x12\x13\n\x0binbox_limit\x18\x02 \x01(\x05\"\xc1\x01\n\x16PendingMessageResponse\x12K\n\x06status\x18\x01 \x01(\x0e\x32;.message_server.PendingMessageResponse.PendingMessageStatus\x12(\n\x07message\x18\x02 \x01(\x0b\x32\x17.message_server.Message\"0\n\x14PendingMessageStatus\x12\x0b\n\x07SUCCESS\x10\x00\x12\x0b\n\x07\x46\x41ILURE\x10\x01\"(\n\x14\x44\x65leteAccountRequest\x12\x10\n\x08username\x18\x01 \x01(\t\"\x93\x01\n\x15\x44\x65leteAccountResponse\x12I\n\x06status\x18\x01 \x01(\x0e\x32\x39.message_server.DeleteAccountResponse.DeleteAccountStatus\"/\n\x13\x44\x65leteAccountStatus\x12\x0b\n\x07SUCCESS\x10\x00\x12\x0b\n\x07\x46\x41ILURE\x10\x01\"8\n\x13SaveSettingsRequest\x12\x10\n\x08username\x18\x01 \x01(\t\x12\x0f\n\x07setting\x18\x02 \x01(\x05\"\x8f\x01\n\x14SaveSettingsResponse\x12G\n\x06status\x18\x01 \x01(\x0e\x32\x37.message_server.SaveSettingsResponse.SaveSettingsStatus\".\n\x12SaveSettingsStatus\x12\x0b\n\x07SUCCESS\x10\x00\x12\x0b\n\x07\x46\x41ILURE\x10\x01\"&\n\x12GetSettingsRequest\x12\x10\n\x08username\x18\x01 \x01(\t\"\x9c\x01\n\x13GetSettingsResponse\x12\x45\n\x06status\x18\x01 \x01(\x0e\x32\x35.message_server.GetSettingsResponse.GetSettingsStatus\x12\x0f\n\x07setting\x18\x02 \x01(\x05\"-\n\x11GetSettingsStatus\x12\x0b\n\x07SUCCESS\x10\x00\x12\x0b\n\x07\x46\x41ILURE\x10\x01\x32\x8b\x06\n\rMessageServer\x12M\n\x08Register\x12\x1f.message_server.RegisterRequest\x1a .message_server.RegisterResponse\x12\x44\n\x05Login\x12\x1c.message_server.LoginRequest\x1a\x1d.message_server.LoginResponse\x12O\n\x08GetUsers\x12\x1f.message_server.GetUsersRequest\x1a .message_server.GetUsersResponse0\x01\x12G\n\x0bSendMessage\x12\x17.message_server.Message\x1a\x1f.message_server.MessageResponse\x12\x64\n\x11GetPendingMessage\x12%.message_server.PendingMessageRequest\x1a&.message_server.PendingMessageResponse0\x01\x12T\n\x0fMonitorMessages\x12&.message_server.MonitorMessagesRequest\x1a\x17.message_server.Message0\x01\x12\\\n\rDeleteAccount\x12$.message_server.DeleteAccountRequest\x1a%.message_server.DeleteAccountResponse\x12Y\n\x0cSaveSettings\x12#.message_server.SaveSettingsRequest\x1a$.message_server.SaveSettingsResponse\x12V\n\x0bGetSettings\x12\".message_server.GetSettingsRequest\x1a#.message_server.GetSettingsResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\rservice.proto\x12\x0emessage_server\"D\n\x0fRegisterRequest\x12\x10\n\x08username\x18\x01 \x01(\t\x12\x10\n\x08password\x18\x02 \x01(\t\x12\r\n\x05\x65mail\x18\x03 \x01(\t\"\x90\x01\n\x10RegisterResponse\x12?\n\x06status\x18\x01 \x01(\x0e\x32/.message_server.RegisterResponse.RegisterStatus\x12\x0f\n\x07message\x18\x02 \x01(\t\"*\n\x0eRegisterStatus\x12\x0b\n\x07SUCCESS\x10\x00\x12\x0b\n\x07\x46\x41ILURE\x10\x01\"2\n\x0cLoginRequest\x12\x10\n\x08username\x18\x01 \x01(\t\x12\x10\n\x08password\x18\x02 \x01(\t\"\x84\x01\n\rLoginResponse\x12\x39\n\x06status\x18\x01 \x01(\x0e\x32).message_server.LoginResponse.LoginStatus\x12\x0f\n\x07message\x18\x02 \x01(\t\"\'\n\x0bLoginStatus\x12\x0b\n\x07SUCCESS\x10\x00\x12\x0b\n\x07\x46\x41ILURE\x10\x01\"#\n\x0fGetUsersRequest\x12\x10\n\x08username\x18\x01 \x01(\t\"\x91\x01\n\x10GetUsersResponse\x12?\n\x06status\x18\x01 \x01(\x0e\x32/.message_server.GetUsersResponse.GetUsersStatus\x12\x10\n\x08username\x18\x02 \x01(\t\"*\n\x0eGetUsersStatus\x12\x0b\n\x07SUCCESS\x10\x00\x12\x0b\n\x07\x46\x41ILURE\x10\x01\")\n\x15MessageHistoryRequest\x12\x10\n\x08username\x18\x01 \x01(\t\"P\n\x07Message\x12\x0e\n\x06sender\x18\x01 \x01(\t\x12\x11\n\trecipient\x18\x02 \x01(\t\x12\x0f\n\x07message\x18\x03 \x01(\t\x12\x11\n\ttimestamp\x18\x04 \x01(\t\"*\n\x16MonitorMessagesRequest\x12\x10\n\x08username\x18\x01 \x01(\t\"{\n\x0fMessageResponse\x12=\n\x06status\x18\x01 \x01(\x0e\x32-.message_server.MessageResponse.MessageStatus\")\n\rMessageStatus\x12\x0b\n\x07SUCCESS\x10\x00\x12\x0b\n\x07\x46\x41ILURE\x10\x01\">\n\x15PendingMessageRequest\x12\x10\n\x08username\x18\x01 \x01(\t\x12\x13\n\x0binbox_limit\x18\x02 \x01(\x05\"\xc1\x01\n\x16PendingMessageResponse\x12K\n\x06status\x18\x01 \x01(\x0e\x32;.message_server.PendingMessageResponse.PendingMessageStatus\x12(\n\x07message\x18\x02 \x01(\x0b\x32\x17.message_server.Message\"0\n\x14PendingMessageStatus\x12\x0b\n\x07SUCCESS\x10\x00\x12\x0b\n\x07\x46\x41ILURE\x10\x01\"(\n\x14\x44\x65leteAccountRequest\x12\x10\n\x08username\x18\x01 \x01(\t\"\x93\x01\n\x15\x44\x65leteAccountResponse\x12I\n\x06status\x18\x01 \x01(\x0e\x32\x39.message_server.DeleteAccountResponse.DeleteAccountStatus\"/\n\x13\x44\x65leteAccountStatus\x12\x0b\n\x07SUCCESS\x10\x00\x12\x0b\n\x07\x46\x41ILURE\x10\x01\"8\n\x13SaveSettingsRequest\x12\x10\n\x08username\x18\x01 \x01(\t\x12\x0f\n\x07setting\x18\x02 \x01(\x05\"\x8f\x01\n\x14SaveSettingsResponse\x12G\n\x06status\x18\x01 \x01(\x0e\x32\x37.message_server.SaveSettingsResponse.SaveSettingsStatus\".\n\x12SaveSettingsStatus\x12\x0b\n\x07SUCCESS\x10\x00\x12\x0b\n\x07\x46\x41ILURE\x10\x01\"&\n\x12GetSettingsRequest\x12\x10\n\x08username\x18\x01 \x01(\t\"\x9c\x01\n\x13GetSettingsResponse\x12\x45\n\x06status\x18\x01 \x01(\x0e\x32\x35.message_server.GetSettingsResponse.GetSettingsStatus\x12\x0f\n\x07setting\x18\x02 \x01(\x05\"-\n\x11GetSettingsStatus\x12\x0b\n\x07SUCCESS\x10\x00\x12\x0b\n\x07\x46\x41ILURE\x10\x01\x32\xe2\x06\n\rMessageServer\x12M\n\x08Register\x12\x1f.message_server.RegisterRequest\x1a .message_server.RegisterResponse\x12\x44\n\x05Login\x12\x1c.message_server.LoginRequest\x1a\x1d.message_server.LoginResponse\x12O\n\x08GetUsers\x12\x1f.message_server.GetUsersRequest\x1a .message_server.GetUsersResponse0\x01\x12U\n\x11GetMessageHistory\x12%.message_server.MessageHistoryRequest\x1a\x17.message_server.Message0\x01\x12G\n\x0bSendMessage\x12\x17.message_server.Message\x1a\x1f.message_server.MessageResponse\x12\x64\n\x11GetPendingMessage\x12%.message_server.PendingMessageRequest\x1a&.message_server.PendingMessageResponse0\x01\x12T\n\x0fMonitorMessages\x12&.message_server.MonitorMessagesRequest\x1a\x17.message_server.Message0\x01\x12\\\n\rDeleteAccount\x12$.message_server.DeleteAccountRequest\x1a%.message_server.DeleteAccountResponse\x12Y\n\x0cSaveSettings\x12#.message_server.SaveSettingsRequest\x1a$.message_server.SaveSettingsResponse\x12V\n\x0bGetSettings\x12\".message_server.GetSettingsRequest\x1a#.message_server.GetSettingsResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -39,38 +39,40 @@ if _descriptor._USE_C_DESCRIPTORS == False:
   _globals['_GETUSERSRESPONSE']._serialized_end=620
   _globals['_GETUSERSRESPONSE_GETUSERSSTATUS']._serialized_start=578
   _globals['_GETUSERSRESPONSE_GETUSERSSTATUS']._serialized_end=620
-  _globals['_MESSAGE']._serialized_start=622
-  _globals['_MESSAGE']._serialized_end=702
-  _globals['_MONITORMESSAGESREQUEST']._serialized_start=704
-  _globals['_MONITORMESSAGESREQUEST']._serialized_end=746
-  _globals['_MESSAGERESPONSE']._serialized_start=748
-  _globals['_MESSAGERESPONSE']._serialized_end=871
-  _globals['_MESSAGERESPONSE_MESSAGESTATUS']._serialized_start=830
-  _globals['_MESSAGERESPONSE_MESSAGESTATUS']._serialized_end=871
-  _globals['_PENDINGMESSAGEREQUEST']._serialized_start=873
-  _globals['_PENDINGMESSAGEREQUEST']._serialized_end=935
-  _globals['_PENDINGMESSAGERESPONSE']._serialized_start=938
-  _globals['_PENDINGMESSAGERESPONSE']._serialized_end=1131
-  _globals['_PENDINGMESSAGERESPONSE_PENDINGMESSAGESTATUS']._serialized_start=1083
-  _globals['_PENDINGMESSAGERESPONSE_PENDINGMESSAGESTATUS']._serialized_end=1131
-  _globals['_DELETEACCOUNTREQUEST']._serialized_start=1133
-  _globals['_DELETEACCOUNTREQUEST']._serialized_end=1173
-  _globals['_DELETEACCOUNTRESPONSE']._serialized_start=1176
-  _globals['_DELETEACCOUNTRESPONSE']._serialized_end=1323
-  _globals['_DELETEACCOUNTRESPONSE_DELETEACCOUNTSTATUS']._serialized_start=1276
-  _globals['_DELETEACCOUNTRESPONSE_DELETEACCOUNTSTATUS']._serialized_end=1323
-  _globals['_SAVESETTINGSREQUEST']._serialized_start=1325
-  _globals['_SAVESETTINGSREQUEST']._serialized_end=1381
-  _globals['_SAVESETTINGSRESPONSE']._serialized_start=1384
-  _globals['_SAVESETTINGSRESPONSE']._serialized_end=1527
-  _globals['_SAVESETTINGSRESPONSE_SAVESETTINGSSTATUS']._serialized_start=1481
-  _globals['_SAVESETTINGSRESPONSE_SAVESETTINGSSTATUS']._serialized_end=1527
-  _globals['_GETSETTINGSREQUEST']._serialized_start=1529
-  _globals['_GETSETTINGSREQUEST']._serialized_end=1567
-  _globals['_GETSETTINGSRESPONSE']._serialized_start=1570
-  _globals['_GETSETTINGSRESPONSE']._serialized_end=1726
-  _globals['_GETSETTINGSRESPONSE_GETSETTINGSSTATUS']._serialized_start=1681
-  _globals['_GETSETTINGSRESPONSE_GETSETTINGSSTATUS']._serialized_end=1726
-  _globals['_MESSAGESERVER']._serialized_start=1729
-  _globals['_MESSAGESERVER']._serialized_end=2508
+  _globals['_MESSAGEHISTORYREQUEST']._serialized_start=622
+  _globals['_MESSAGEHISTORYREQUEST']._serialized_end=663
+  _globals['_MESSAGE']._serialized_start=665
+  _globals['_MESSAGE']._serialized_end=745
+  _globals['_MONITORMESSAGESREQUEST']._serialized_start=747
+  _globals['_MONITORMESSAGESREQUEST']._serialized_end=789
+  _globals['_MESSAGERESPONSE']._serialized_start=791
+  _globals['_MESSAGERESPONSE']._serialized_end=914
+  _globals['_MESSAGERESPONSE_MESSAGESTATUS']._serialized_start=873
+  _globals['_MESSAGERESPONSE_MESSAGESTATUS']._serialized_end=914
+  _globals['_PENDINGMESSAGEREQUEST']._serialized_start=916
+  _globals['_PENDINGMESSAGEREQUEST']._serialized_end=978
+  _globals['_PENDINGMESSAGERESPONSE']._serialized_start=981
+  _globals['_PENDINGMESSAGERESPONSE']._serialized_end=1174
+  _globals['_PENDINGMESSAGERESPONSE_PENDINGMESSAGESTATUS']._serialized_start=1126
+  _globals['_PENDINGMESSAGERESPONSE_PENDINGMESSAGESTATUS']._serialized_end=1174
+  _globals['_DELETEACCOUNTREQUEST']._serialized_start=1176
+  _globals['_DELETEACCOUNTREQUEST']._serialized_end=1216
+  _globals['_DELETEACCOUNTRESPONSE']._serialized_start=1219
+  _globals['_DELETEACCOUNTRESPONSE']._serialized_end=1366
+  _globals['_DELETEACCOUNTRESPONSE_DELETEACCOUNTSTATUS']._serialized_start=1319
+  _globals['_DELETEACCOUNTRESPONSE_DELETEACCOUNTSTATUS']._serialized_end=1366
+  _globals['_SAVESETTINGSREQUEST']._serialized_start=1368
+  _globals['_SAVESETTINGSREQUEST']._serialized_end=1424
+  _globals['_SAVESETTINGSRESPONSE']._serialized_start=1427
+  _globals['_SAVESETTINGSRESPONSE']._serialized_end=1570
+  _globals['_SAVESETTINGSRESPONSE_SAVESETTINGSSTATUS']._serialized_start=1524
+  _globals['_SAVESETTINGSRESPONSE_SAVESETTINGSSTATUS']._serialized_end=1570
+  _globals['_GETSETTINGSREQUEST']._serialized_start=1572
+  _globals['_GETSETTINGSREQUEST']._serialized_end=1610
+  _globals['_GETSETTINGSRESPONSE']._serialized_start=1613
+  _globals['_GETSETTINGSRESPONSE']._serialized_end=1769
+  _globals['_GETSETTINGSRESPONSE_GETSETTINGSSTATUS']._serialized_start=1724
+  _globals['_GETSETTINGSRESPONSE_GETSETTINGSSTATUS']._serialized_end=1769
+  _globals['_MESSAGESERVER']._serialized_start=1772
+  _globals['_MESSAGESERVER']._serialized_end=2638
 # @@protoc_insertion_point(module_scope)

@@ -30,6 +30,11 @@ class MessageServerStub(object):
                 request_serializer=service__pb2.GetUsersRequest.SerializeToString,
                 response_deserializer=service__pb2.GetUsersResponse.FromString,
                 )
+        self.GetMessageHistory = channel.unary_stream(
+                '/message_server.MessageServer/GetMessageHistory',
+                request_serializer=service__pb2.MessageHistoryRequest.SerializeToString,
+                response_deserializer=service__pb2.Message.FromString,
+                )
         self.SendMessage = channel.unary_unary(
                 '/message_server.MessageServer/SendMessage',
                 request_serializer=service__pb2.Message.SerializeToString,
@@ -67,8 +72,7 @@ class MessageServerServicer(object):
     """
 
     def Register(self, request, context):
-        """Allow users to register
-        """
+        """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -80,6 +84,12 @@ class MessageServerServicer(object):
         raise NotImplementedError('Method not implemented!')
 
     def GetUsers(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetMessageHistory(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -140,6 +150,11 @@ def add_MessageServerServicer_to_server(servicer, server):
                     servicer.GetUsers,
                     request_deserializer=service__pb2.GetUsersRequest.FromString,
                     response_serializer=service__pb2.GetUsersResponse.SerializeToString,
+            ),
+            'GetMessageHistory': grpc.unary_stream_rpc_method_handler(
+                    servicer.GetMessageHistory,
+                    request_deserializer=service__pb2.MessageHistoryRequest.FromString,
+                    response_serializer=service__pb2.Message.SerializeToString,
             ),
             'SendMessage': grpc.unary_unary_rpc_method_handler(
                     servicer.SendMessage,
@@ -230,6 +245,23 @@ class MessageServer(object):
         return grpc.experimental.unary_stream(request, target, '/message_server.MessageServer/GetUsers',
             service__pb2.GetUsersRequest.SerializeToString,
             service__pb2.GetUsersResponse.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def GetMessageHistory(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_stream(request, target, '/message_server.MessageServer/GetMessageHistory',
+            service__pb2.MessageHistoryRequest.SerializeToString,
+            service__pb2.Message.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
 

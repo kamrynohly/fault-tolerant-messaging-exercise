@@ -1,7 +1,7 @@
 import sys
 import os
 import grpc
-import datetime
+from datetime import datetime
 import argparse
 import logging
 import socket # For retrieving local IP address only
@@ -37,7 +37,6 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
         
     def __init__(self):
         self.active_clients = {}
-        self.pending_messages = defaultdict(list)
         self.message_queue = defaultdict(list)
     
     # MARK: User Authentication
@@ -63,6 +62,8 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
         """
         try:
             logger.info(f"Handling register request from {request.username}")
+            # Set up databases if not completed already
+            AuthHandler.setup_database()
             status, message = AuthHandler.register_user(request.username, request.password, request.email)
             
             if status:
@@ -180,16 +181,24 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
         """
         try:
             logger.info(f"Handling request from {request.username} to retrieve pending messages.")
-            logger.info(f"Messages pending for {request.username}: {self.pending_messages[request.username]}")
 
             # Only send the number of messages that the user desires.
             counter = 0
-            while self.pending_messages[request.username] and counter < request.inbox_limit:
+            pending_messages = DatabaseManager.get_pending_messages(request.username)
+            logger.info(f"Messages pending for {request.username}: {pending_messages}")
+
+            while len(pending_messages) > 0 and counter < request.inbox_limit:
                 counter += 1
-                pending_message = self.pending_messages[request.username].pop(0)
+                pending_message = pending_messages.pop(0)
+                # Update persistent storage status of message
+                DatabaseManager.pending_message_sent(pending_message["id"])
+                serialized_message = service_pb2.Message(sender=pending_message["sender"], 
+                                                recipient=pending_message["recipient"], 
+                                                message=pending_message["message"], 
+                                                timestamp=pending_message["timestamp"])
                 yield service_pb2.PendingMessageResponse(
                     status=service_pb2.PendingMessageResponse.PendingMessageStatus.SUCCESS,
-                    message=pending_message
+                    message=serialized_message
                 )
         except Exception as e:
             logger.error(f"Failed to stream pending messages to {request.username} with error: {e}")
@@ -201,6 +210,24 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
                 status=service_pb2.PendingMessageResponse.PendingMessageStatus.FAILURE,
                 message=error_message
             )
+
+    def GetMessageHistory(self, request : service_pb2.MessageHistoryRequest, context):
+        try:
+            # Should already be ordered by timestamp
+            messages = DatabaseManager.get_messages(request.username)
+            for message in messages:
+                serialized_message = service_pb2.Message(sender=message["sender"], 
+                                                recipient=message["recipient"], 
+                                                message=message["message"], 
+                                                timestamp=message["timestamp"])
+                yield serialized_message
+        except Exception as e:
+            logger.error(f"Failed to retrieve message history for user {request.username} with error: {e}")
+            error_message = service_pb2.Message(sender="error", 
+                                                recipient="error", 
+                                                message=str(e), 
+                                                timestamp=str(datetime.now()))
+            yield error_message
 
     # MARK: Message Handling
     def SendMessage(self, request : service_pb2.Message, context) -> service_pb2.MessageResponse:
@@ -245,12 +272,14 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
                 else:
                     logger.info(f"Message from {request.sender} added to queue for streaming to {request.recipient}.")
                     self.message_queue[request.recipient].append(message_request)
+                    # Save to persistent storage
+                    DatabaseManager.save_message(request.sender, request.recipient, request.message, request.timestamp, False)
                     return service_pb2.MessageResponse(
                         status=service_pb2.MessageResponse.MessageStatus.SUCCESS
                     )
             
-            # If the client is not active and reachable, add the message to the pending messages.
-            self.pending_messages[request.recipient].append(message_request)
+            # If the client is not active and reachable, add the message to the pending message in our database.
+            DatabaseManager.save_message(request.sender, request.recipient, request.message, request.timestamp, True)
             return service_pb2.MessageResponse(status=service_pb2.MessageResponse.MessageStatus.SUCCESS)
         
         except Exception as e:

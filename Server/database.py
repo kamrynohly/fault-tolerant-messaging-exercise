@@ -72,3 +72,55 @@ class DatabaseManager:
         except Exception as e:
             print(f"Unexpected error: {str(e)}")
             return False
+
+    # Persistent Messages
+    def save_message(sender, recipient, message, timestamp, isPending):
+        try:
+            with sqlite3.connect('users.db') as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    'INSERT INTO messages (sender, recipient, message, timestamp, isPending) VALUES (?, ?, ?, ?, ?)',
+                    (sender, recipient, message, timestamp, isPending)
+                )
+                conn.commit()
+                return
+        except Exception as e:
+            print(f"Unexpected error while saving message: {str(e)}")
+            return
+                
+        
+    def pending_message_sent(id):
+        try:
+            with sqlite3.connect('users.db') as conn:
+                cursor = conn.cursor()
+                cursor.execute('UPDATE messages SET isPending = ? WHERE id = ?', (False, id))
+                conn.commit()
+                return
+        except Exception as e:
+            print(f"Unexpected error while updating message status: {str(e)}")
+            return
+
+    def get_pending_messages(username):
+        try:
+            with sqlite3.connect('users.db') as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                cursor.execute('SELECT * FROM messages WHERE recipient = ? AND isPending = True ORDER BY timestamp ASC', (username,))
+                pending_messages = cursor.fetchall()
+                return pending_messages
+        except Exception as e:
+            print(f"Unexpected error fetching pending messages for user: {str(e)}")
+            return []
+
+    def get_messages(username):
+        try:
+            with sqlite3.connect('users.db') as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                cursor.execute('SELECT * FROM messages WHERE isPending = False AND (sender = ? OR recipient = ?) ORDER BY timestamp ASC', (username, username))
+                all_messages = cursor.fetchall()
+                return all_messages
+        except Exception as e:
+            print(f"Unexpected error fetching messages for user: {str(e)}")
+            return []
+

@@ -14,13 +14,26 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 class ChatUI:
-    def __init__(self, root, callbacks, username, all_users, pending_messages, settings=30):
+    def __init__(self, root, callbacks, username, all_users, pending_messages, message_history, settings=30):
         self.root = root
         self.username = username
         self.all_users = all_users
         self.settings = tk.IntVar(value=settings)
 
-        self.chat_histories = {}  # Format: {username: [{'sender': str, 'message': str, 'timestamp': str}]}
+        # Handle the message history from our persistent storage!
+        history = defaultdict(list)
+        for msg in message_history:
+            other_user = msg.recipient if msg.sender == username else msg.sender
+            
+            # Append the message to the correct recipient's list
+            history[other_user].append({
+                'sender': msg.sender,
+                'message': msg.message,
+                'timestamp': msg.timestamp
+            })
+
+        # self.chat_histories = {}  # Format: {username: [{'sender': str, 'message': str, 'timestamp': str}]}
+        self.chat_histories = history # Format: {username: [{'sender': str, 'message': str, 'timestamp': str}]}
         self.new_messages = pending_messages
         self.pending_messages = pending_messages
 

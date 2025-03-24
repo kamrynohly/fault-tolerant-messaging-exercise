@@ -61,7 +61,7 @@ class Client:
             register_callback=self._handle_register
         )
 
-    def show_chat_ui(self, username, settings, all_users, pending_messages):
+    def show_chat_ui(self, username, settings, all_users, pending_messages, message_history):
         """
         Create the initial chat UI.
         """
@@ -83,6 +83,7 @@ class Client:
             username=username,
             all_users=all_users, 
             pending_messages=pending_messages,
+            message_history=message_history,
             settings=settings,
         )
 
@@ -105,8 +106,8 @@ class Client:
         response = self.stub.Login(service_pb2.LoginRequest(username=username, password=password))
         logger.info(f"Client {username} sent login request to server.")
         if response.status == service_pb2.LoginResponse.LoginStatus.SUCCESS:
-            settings, all_users = self._handle_setup(username)
-            self.show_chat_ui(username, settings, all_users, {})
+            settings, all_users, message_history = self._handle_setup(username)
+            self.show_chat_ui(username, settings, all_users, {}, message_history)
         else:
             logger.warning(f"Login failed for user {username} with message {response.message}")
             messagebox.showerror("Login Failed", response.message)
@@ -128,8 +129,8 @@ class Client:
         logger.info(f"Client {username} sent register request to server.")
         if response.status == service_pb2.RegisterResponse.RegisterStatus.SUCCESS:
             logger.info(f"Client {username} registered successfully.")
-            settings, all_users = self._handle_setup(username)
-            self.show_chat_ui(username, settings, all_users, {})
+            settings, all_users, message_history = self._handle_setup(username)
+            self.show_chat_ui(username, settings, all_users, {}, message_history)
         else:
             logger.warning(f"Register failed for {username} with message {response.message}.")
             messagebox.showerror("Register Failed", response.message)
@@ -148,7 +149,13 @@ class Client:
             settings_response = self.stub.GetSettings(service_pb2.GetSettingsRequest(username=username))
             settings = settings_response.setting
                     
-            return settings, all_users
+
+            # Get message history
+            message_history_request = self.stub.GetMessageHistory(service_pb2.MessageHistoryRequest(username=username))
+            message_history = [message for message in message_history_request]
+            print("Message history:", message_history)
+
+            return settings, all_users, message_history
         except Exception as e:
             logger.error(f"Failed in setup with error: {e}")
             sys.exit(1)

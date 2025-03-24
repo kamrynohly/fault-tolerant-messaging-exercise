@@ -29,6 +29,18 @@ class AuthHandler:
                 )
             ''')
             conn.commit()
+            # Create a table to store messages between users
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS messages (
+                    id INTEGER PRIMARY KEY,
+                    sender TEXT NOT NULL,
+                    recipient TEXT NOT NULL,
+                    message TEXT NOT NULL,
+                    timestamp INTEGER NOT NULL,
+                    isPending BOOL NOT NULL
+                )
+            ''')
+            conn.commit()
 
     @staticmethod
     def register_user(username, password, email):
