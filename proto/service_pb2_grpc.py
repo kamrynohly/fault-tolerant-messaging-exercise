@@ -65,6 +65,26 @@ class MessageServerStub(object):
                 request_serializer=service__pb2.GetSettingsRequest.SerializeToString,
                 response_deserializer=service__pb2.GetSettingsResponse.FromString,
                 )
+        self.NewReplica = channel.unary_unary(
+                '/message_server.MessageServer/NewReplica',
+                request_serializer=service__pb2.NewReplicaRequest.SerializeToString,
+                response_deserializer=service__pb2.LeaderResponse.FromString,
+                )
+        self.ElectLeader = channel.unary_unary(
+                '/message_server.MessageServer/ElectLeader',
+                request_serializer=service__pb2.ElectLeaderRequest.SerializeToString,
+                response_deserializer=service__pb2.LeaderResponse.FromString,
+                )
+        self.Heartbeat = channel.unary_unary(
+                '/message_server.MessageServer/Heartbeat',
+                request_serializer=service__pb2.HeartbeatRequest.SerializeToString,
+                response_deserializer=service__pb2.HeartbeatResponse.FromString,
+                )
+        self.GetServers = channel.unary_stream(
+                '/message_server.MessageServer/GetServers',
+                request_serializer=service__pb2.GetServersRequest.SerializeToString,
+                response_deserializer=service__pb2.ServerInfoResponse.FromString,
+                )
 
 
 class MessageServerServicer(object):
@@ -133,6 +153,31 @@ class MessageServerServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def NewReplica(self, request, context):
+        """Handle replicas
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ElectLeader(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def Heartbeat(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetServers(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_MessageServerServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -185,6 +230,26 @@ def add_MessageServerServicer_to_server(servicer, server):
                     servicer.GetSettings,
                     request_deserializer=service__pb2.GetSettingsRequest.FromString,
                     response_serializer=service__pb2.GetSettingsResponse.SerializeToString,
+            ),
+            'NewReplica': grpc.unary_unary_rpc_method_handler(
+                    servicer.NewReplica,
+                    request_deserializer=service__pb2.NewReplicaRequest.FromString,
+                    response_serializer=service__pb2.LeaderResponse.SerializeToString,
+            ),
+            'ElectLeader': grpc.unary_unary_rpc_method_handler(
+                    servicer.ElectLeader,
+                    request_deserializer=service__pb2.ElectLeaderRequest.FromString,
+                    response_serializer=service__pb2.LeaderResponse.SerializeToString,
+            ),
+            'Heartbeat': grpc.unary_unary_rpc_method_handler(
+                    servicer.Heartbeat,
+                    request_deserializer=service__pb2.HeartbeatRequest.FromString,
+                    response_serializer=service__pb2.HeartbeatResponse.SerializeToString,
+            ),
+            'GetServers': grpc.unary_stream_rpc_method_handler(
+                    servicer.GetServers,
+                    request_deserializer=service__pb2.GetServersRequest.FromString,
+                    response_serializer=service__pb2.ServerInfoResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -364,5 +429,73 @@ class MessageServer(object):
         return grpc.experimental.unary_unary(request, target, '/message_server.MessageServer/GetSettings',
             service__pb2.GetSettingsRequest.SerializeToString,
             service__pb2.GetSettingsResponse.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def NewReplica(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/message_server.MessageServer/NewReplica',
+            service__pb2.NewReplicaRequest.SerializeToString,
+            service__pb2.LeaderResponse.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def ElectLeader(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/message_server.MessageServer/ElectLeader',
+            service__pb2.ElectLeaderRequest.SerializeToString,
+            service__pb2.LeaderResponse.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def Heartbeat(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/message_server.MessageServer/Heartbeat',
+            service__pb2.HeartbeatRequest.SerializeToString,
+            service__pb2.HeartbeatResponse.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def GetServers(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_stream(request, target, '/message_server.MessageServer/GetServers',
+            service__pb2.GetServersRequest.SerializeToString,
+            service__pb2.ServerInfoResponse.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)

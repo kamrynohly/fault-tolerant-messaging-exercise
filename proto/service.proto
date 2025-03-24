@@ -18,6 +18,49 @@ service MessageServer {
     rpc DeleteAccount (DeleteAccountRequest) returns (DeleteAccountResponse);
     rpc SaveSettings (SaveSettingsRequest) returns (SaveSettingsResponse);
     rpc GetSettings (GetSettingsRequest) returns (GetSettingsResponse);
+
+    // Handle replicas
+    rpc NewReplica (NewReplicaRequest) returns (LeaderResponse);
+    rpc ElectLeader (ElectLeaderRequest) returns (LeaderResponse);
+    rpc Heartbeat (HeartbeatRequest) returns (HeartbeatResponse);
+    rpc GetServers (GetServersRequest) returns (stream ServerInfoResponse);    
+}
+
+// MARK: FAULT TOLERANCE
+message NewReplicaRequest {
+    string new_replica_id = 1;
+    string ip_addr = 2;
+    string port = 3;
+}
+
+message HeartbeatRequest {
+    string requestor_id = 1;
+    string server_id = 2;
+}
+
+message HeartbeatResponse {
+    string responder_id = 1;
+    string status = 2;
+}
+
+message ElectLeaderRequest {
+    string requestor_id = 1;
+}
+
+message LeaderResponse {
+    string id = 1;
+    string ip = 2;
+    string port = 3;
+}
+
+message GetServersRequest {
+    string requestor_id = 1;
+}
+
+message ServerInfoResponse {
+    string id = 1;
+    string ip = 2;
+    string port = 3;
 }
 
 // Register Users
