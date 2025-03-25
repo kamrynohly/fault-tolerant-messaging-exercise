@@ -450,9 +450,18 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
         # Do a couple of things
         #       1: Update this server in SQL db
         #       2: Add this server to list of current servers
-        print(request)
         DatabaseManager.add_server(request.new_replica_id, request.ip_addr, request.port)
         self.servers[request.new_replica_id] = {"ip": request.ip_addr, "port": request.port, "heartbeat": datetime.now()}
+
+        # FORWARD REQUEST TO ALL SERVERS
+        for id in self.servers:
+            if not request.new_replica_id == id:
+                try:
+                    server_channel = grpc.insecure_channel(f'{self.servers[id]["ip"]}:{self.servers[id]["port"]}')  # Replace with actual second server address
+                    stub = service_pb2_grpc.MessageServerStub(server_channel)
+                    stub.NewReplica(request) # Send same request to all servers
+                except Exception as e:
+                    print("Encountered problem forwarding new replica request to all servers", e)
 
         # TODO: DONT HARDCODE!!!
         return service_pb2.LeaderResponse(id=self.server_id, ip="127.0.0.1", port="5001")

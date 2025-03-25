@@ -476,6 +476,18 @@ class ReplicaServer(service_pb2_grpc.MessageServerServicer):
     #     # TODO: DONT HARDCODE!!!
     #     return service_pb2.LeaderResponse(id=self.server_id, ip="127.0.0.1", port="5001")
 
+    def NewReplica(self, request, context):
+        # A new server will call this function first to inform the leader that they now exist.
+        # Do a couple of things
+        #       1: Update this server in SQL db
+        #       2: Add this server to list of current servers
+        print(request)
+        DatabaseManager.add_server(request.new_replica_id, request.ip_addr, request.port)
+        self.servers[request.new_replica_id] = {"ip": request.ip_addr, "port": request.port, "heartbeat": datetime.now()}
+
+        # TODO: DONT HARDCODE!!!
+        return service_pb2.LeaderResponse(id=self.server_id, ip="127.0.0.1", port="5001")
+
 
     def Heartbeat(self, request : service_pb2.HeartbeatRequest, context) -> service_pb2.HeartbeatResponse:
         requestor_id = request.requestor_id
