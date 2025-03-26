@@ -70,11 +70,6 @@ class MessageServerStub(object):
                 request_serializer=service__pb2.NewReplicaRequest.SerializeToString,
                 response_deserializer=service__pb2.LeaderResponse.FromString,
                 )
-        self.ElectLeader = channel.unary_unary(
-                '/message_server.MessageServer/ElectLeader',
-                request_serializer=service__pb2.ElectLeaderRequest.SerializeToString,
-                response_deserializer=service__pb2.LeaderResponse.FromString,
-                )
         self.Heartbeat = channel.unary_unary(
                 '/message_server.MessageServer/Heartbeat',
                 request_serializer=service__pb2.HeartbeatRequest.SerializeToString,
@@ -154,14 +149,8 @@ class MessageServerServicer(object):
         raise NotImplementedError('Method not implemented!')
 
     def NewReplica(self, request, context):
-        """Handle replicas
+        """Handle replication.
         """
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
-    def ElectLeader(self, request, context):
-        """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -234,11 +223,6 @@ def add_MessageServerServicer_to_server(servicer, server):
             'NewReplica': grpc.unary_unary_rpc_method_handler(
                     servicer.NewReplica,
                     request_deserializer=service__pb2.NewReplicaRequest.FromString,
-                    response_serializer=service__pb2.LeaderResponse.SerializeToString,
-            ),
-            'ElectLeader': grpc.unary_unary_rpc_method_handler(
-                    servicer.ElectLeader,
-                    request_deserializer=service__pb2.ElectLeaderRequest.FromString,
                     response_serializer=service__pb2.LeaderResponse.SerializeToString,
             ),
             'Heartbeat': grpc.unary_unary_rpc_method_handler(
@@ -445,23 +429,6 @@ class MessageServer(object):
             metadata=None):
         return grpc.experimental.unary_unary(request, target, '/message_server.MessageServer/NewReplica',
             service__pb2.NewReplicaRequest.SerializeToString,
-            service__pb2.LeaderResponse.FromString,
-            options, channel_credentials,
-            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
-
-    @staticmethod
-    def ElectLeader(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(request, target, '/message_server.MessageServer/ElectLeader',
-            service__pb2.ElectLeaderRequest.SerializeToString,
             service__pb2.LeaderResponse.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
