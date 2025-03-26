@@ -406,9 +406,16 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
             print("MONITOR MESSAGES GOT CALLED!!!")
             if request.source == "Client" and self.leader["id"] != self.server_id:
                 # Forward request
-                print("FORWARD monitor messages TO LEADER!!!")
-                response = self.leader["stub"].MonitorMessages(request)
-                return response
+                # Before we forward, let's make sure the leader hasn't died!
+                try:
+                    self.leader["stub"].Heartbeat(service_pb2.HeartbeatRequest(requestor_id=self.server_id, server_id=self.leader["id"]), timeout=1)
+                    print("FORWARD monitor messages TO LEADER!!!")
+                    response = self.leader["stub"].MonitorMessages(request)
+                    return response
+                except Exception as e:
+                    # The leader may have died! In this case, let's do something???
+                    print("THIS IS IT!!")
+
 
             logger.info(f"Handling client {request.username}'s request to monitor for messages.")
             
@@ -452,8 +459,8 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
         finally:
             # When the client's stream closes, remove them from the active clients.
             logger.info(f"Client disconnected with username: {request.username}")
-            if request.username in self.active_clients:
-                self.active_clients.pop(request.username)
+            # if request.username in self.active_clients:
+            #     self.active_clients.pop(request.username)
 
     # MARK: Account Settings
     def DeleteAccount(self, request : service_pb2.DeleteAccountRequest, context) -> service_pb2.DeleteAccountResponse:

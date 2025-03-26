@@ -16,6 +16,7 @@ from UI.chat import ChatUI
 import tkinter as tk
 from tkinter import ttk, messagebox
 from client_config import SERVERS
+import time
 
 
 # MARK: Logger Initialization
@@ -51,23 +52,50 @@ class Client:
     def check_servers(self):
         # If we currently have a server, see if it is still useful.
         try:
+            # print("In check servers!")
             if self.current_stub != None:
+                print("IN FIRST THING")
                 # Check if it exists, if there is no response after 2 seconds, move on
-                self.current_stub.Heartbeat(service_pb2.HeartbeatRequest(requestor_id="Client", server_id=""), timeout=2)
+                response = self.current_stub.Heartbeat(service_pb2.HeartbeatRequest(requestor_id="Client", server_id=""), timeout=2)
+                print(response)
+                return
                 # Our current server is still working, so no changes needed.
+            else:
+                print("IN ELSE")
+                # Look for a new server
+                self.current_stub = None
+                for server in SERVERS:
+                    print(server)
+                    try:
+                        channel = grpc.insecure_channel(f'{server["ip"]}:{server["port"]}')
+                        stub = service_pb2_grpc.MessageServerStub(channel)
+                        # Check if it exists, if there is no response after 2 seconds, move on
+                        stub.Heartbeat(service_pb2.HeartbeatRequest(requestor_id="Client", server_id=""), timeout=2)
+                        # If we got a valid response, use this!
+                        self.current_stub = stub
+                        print("FOUND IT!")
+                        break
+                    except Exception as e:
+                        # Not this one!
+                        self.current_stub = None
+                        continue 
         except Exception as e:
             # Look for a new server
-            for server in SERVERS:
-                try:
-                    channel = grpc.insecure_channel(f'{server["ip"]}:{server["port"]}')
-                    stub = service_pb2_grpc.MessageServerStub(channel)
-                    # Check if it exists, if there is no response after 2 seconds, move on
-                    stub.Heartbeat(service_pb2.HeartbeatRequest(requestor_id="Client", server_id=""), timeout=2)
-                    # If we got a valid response, use this!
-                    self.current_stub = stub
-                except Exception as e:
-                    # Not this one!
-                    continue 
+            # for server in SERVERS:
+            #     try:
+            #         channel = grpc.insecure_channel(f'{server["ip"]}:{server["port"]}')
+            #         stub = service_pb2_grpc.MessageServerStub(channel)
+            #         # Check if it exists, if there is no response after 2 seconds, move on
+            #         stub.Heartbeat(service_pb2.HeartbeatRequest(requestor_id="Client", server_id=""), timeout=2)
+            #         # If we got a valid response, use this!
+            #         self.current_stub = stub
+            #     except Exception as e:
+            #         # Not this one!
+            #         continue 
+            print("IN EXCEPTION")
+            self.current_stub = None
+            time.sleep(2)
+            self.check_servers()
     
     # def get_writable_server(self, type, request):
     #     # Update which server we use
@@ -356,7 +384,8 @@ class Client:
             
             # Get message history
             try:
-                message_history = self.current_stub.GetMessageHistory(service_pb2.MessageHistoryRequest(username=username))
+                message_history_iterator = self.current_stub.GetMessageHistory(service_pb2.MessageHistoryRequest(username=username))
+                message_history = [item for item in message_history_iterator]
                 # message_history = self.get_writable_server("GetMessageHistory", service_pb2.MessageHistoryRequest(username=username))
                 logger.info(f"Retrieved {len(message_history)} message history items")
             except Exception as e:
@@ -404,9 +433,12 @@ class Client:
             logger.info(f"Starting message monitoring...")
             self.check_servers()
             message_iterator = self.current_stub.MonitorMessages(service_pb2.MonitorMessagesRequest(username=self.current_user, source="Client"))
+            original_server = self.current_stub
             while True:
                 try:
-                    print("about to iterate")
+                    # print("about to iterate")
+                    if original_server != self.current_stub:
+                        break
                     for message in message_iterator:
                         self.chat_ui.display_message(from_user=message.sender, message=message.message)
                 except Exception as e:
@@ -414,6 +446,12 @@ class Client:
                     # self.check_servers()
                     print("RESTARTING MONITOR MESSAGES")
                     self._monitor_messages()
+            # Restarting
+            print("RESTARTING MONITOR MESSAGES")
+            time.sleep(5)
+            print("after sleep")
+            self._monitor_messages()
+
             # for server in SERVERS:
             #     try:
             #         channel = grpc.insecure_channel(f'{server["ip"]}:{server["port"]}')
