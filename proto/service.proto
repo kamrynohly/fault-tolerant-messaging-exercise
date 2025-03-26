@@ -1,6 +1,5 @@
 syntax = "proto3";
 
-
 // NOTE: We can change this name!!
 package message_server;
 
@@ -18,10 +17,8 @@ service MessageServer {
     rpc DeleteAccount (DeleteAccountRequest) returns (DeleteAccountResponse);
     rpc SaveSettings (SaveSettingsRequest) returns (SaveSettingsResponse);
     rpc GetSettings (GetSettingsRequest) returns (GetSettingsResponse);
-
-    // Handle replicas
+    // Handle replication.
     rpc NewReplica (NewReplicaRequest) returns (LeaderResponse);
-    rpc ElectLeader (ElectLeaderRequest) returns (LeaderResponse);
     rpc Heartbeat (HeartbeatRequest) returns (HeartbeatResponse);
     rpc GetServers (GetServersRequest) returns (stream ServerInfoResponse);    
 }
@@ -29,7 +26,7 @@ service MessageServer {
 // MARK: FAULT TOLERANCE
 message NewReplicaRequest {
     string new_replica_id = 1;
-    string ip_addr = 2;
+    string ip = 2;
     string port = 3;
 }
 
@@ -41,10 +38,6 @@ message HeartbeatRequest {
 message HeartbeatResponse {
     string responder_id = 1;
     string status = 2;
-}
-
-message ElectLeaderRequest {
-    string requestor_id = 1;
 }
 
 message LeaderResponse {
@@ -71,7 +64,6 @@ message RegisterRequest {
     string source = 4;
 }
 
-// NOTE: do we want this to have anything besides a success or failure?
 message RegisterResponse {
     enum RegisterStatus {
         SUCCESS = 0;
@@ -88,7 +80,6 @@ message LoginRequest {
     string source = 3;
 }
 
-// NOTE: do we want this to have anything besides a success or failure?
 message LoginResponse {
     enum LoginStatus {
         SUCCESS = 0;
@@ -115,7 +106,6 @@ message GetUsersResponse {
 message MessageHistoryRequest {
     string username = 1;
 }
-// For returning a list of something, we could use an rpc stream of an item?
 
 message Message {
     string sender = 1;

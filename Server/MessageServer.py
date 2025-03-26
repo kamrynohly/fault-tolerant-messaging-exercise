@@ -489,9 +489,9 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
     
             status = self.db_manager.delete_account(request.username)
 
+            # If the leader is handling this request, forward it to all of the replicas.
             if request.source == "Client" and self.leader["id"] == self.server_id:
-                print("SEND delete account BACK TO SERVERS")
-                # Send to other databases
+                logger.info("Propagating delete account request from leader to replicas.")
                 new_request = service_pb2.DeleteAccountRequest(username=request.username, source="Leader")
                 for id in self.servers:
                     self.servers[id]["stub"].DeleteAccount(new_request)
@@ -520,24 +520,25 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
             request (SaveSettingsRequest): Contains the client info for setting updates.
                 - username (str): The username of the account to be updated.
                 - setting (int32): The number of pending messages the client wants to receive at a given time.
+                - source (str): The originator of the request (Client or Leader)
             context (RPCContext): The RPC call context, containing information about the client.
 
         Returns:
             SaveSettingsResponse: Returns the status (SaveSettingsStatus) of SUCCESS or FAILURE of saving the new limit.
         """
         try:
-            if request.source == "Client" and self.leader["id"] != self.server_id:
-                # Forward request
-                print("FORWARD save settings TO LEADER!!!")
-                response = self.leader["stub"].SaveSettings(request)
-                return response
-
             logger.info(f"Handling save setting request from {request.username} to update setting to {request.setting}.")
+
+            # If we are not the leader and the request is from a client, forward the request to the leader.
+            if request.source == "Client" and self.leader["id"] != self.server_id:
+                logger.info("Forwarding SaveSettings request from replica to leader.")
+                return self.leader["stub"].SaveSettings(request)
+
             status = self.db_manager.save_settings(request.username, request.setting)
-            
+
+            # If the leader is handling this request, forward it to all of the replicas.
             if request.source == "Client" and self.leader["id"] == self.server_id:
-                print("SEND save settings BACK TO SERVERS")
-                # Send to other databases
+                logger.info("Propagating SaveSettings request from leader to replicas.")
                 new_request = service_pb2.SaveSettingsRequest(username=request.username, setting=request.setting, source="Leader")
                 for id in self.servers:
                     self.servers[id]["stub"].SaveSettings(new_request)
@@ -588,169 +589,204 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
     
     # MARK: Fault Tolerance
     def setup(self, ip_connect, port_connect):
-        # Connect to another server
-        initial_channel = grpc.insecure_channel(f'{ip_connect}:{port_connect}')  # Replace with actual second server address
-        initial_stub = service_pb2_grpc.MessageServerStub(initial_channel)
-        leader_info_response = initial_stub.NewReplica(service_pb2.NewReplicaRequest(new_replica_id=self.server_id, ip_addr=self.ip, port=self.port))
+        """
+        Handles the setup of a replica. Announces the creation of the replica to other replicas and the leader,
+        retrieves the current leader, and starts the heartbeat with other servers.
 
-        # Connecting to the leader
-        leader_channel = grpc.insecure_channel(f'{leader_info_response.ip}:{leader_info_response.port}')
-        leader_stub = service_pb2_grpc.MessageServerStub(leader_channel)
-        self.leader["stub"] = leader_stub
-        self.leader["id"] = leader_info_response.id
-        self.leader["ip"] = leader_info_response.ip
-        self.leader["port"] = leader_info_response.port
-        
-        print("Leader is currently", self.leader)
+        Parameters:
+            ip_connect (String): The IP address of either another replica or the leader of the Chat application.
+            port_connect (String): The port of either another replica or the leader of the Chat application.
+        """
+        try:
+            logger.info(f"Setting up replica by connecting it to {ip_connect}:{port_connect}")
+            # Connect to the provided other server
+            initial_channel = grpc.insecure_channel(f'{ip_connect}:{port_connect}')
+            initial_stub = service_pb2_grpc.MessageServerStub(initial_channel)
+            leader_info_response = initial_stub.NewReplica(service_pb2.NewReplicaRequest(new_replica_id=self.server_id, ip=self.ip, port=self.port))
 
-        # Now, get info for the rest of the servers from the leader!
-        servers = self.leader["stub"].GetServers(service_pb2.GetServersRequest(requestor_id=self.server_id))
-        
-        for server in servers:
-            if not server.id == self.server_id:
+            # Connect to the leader that was passed back by the first server.
+            leader_channel = grpc.insecure_channel(f'{leader_info_response.ip}:{leader_info_response.port}')
+            leader_stub = service_pb2_grpc.MessageServerStub(leader_channel)
+            self.leader["stub"] = leader_stub
+            self.leader["id"] = leader_info_response.id
+            self.leader["ip"] = leader_info_response.ip
+            self.leader["port"] = leader_info_response.port
 
+            # Retrieve information about the other active, online servers.
+            servers = self.leader["stub"].GetServers(service_pb2.GetServersRequest(requestor_id=self.server_id))
+            for server in servers:
                 server_channel = grpc.insecure_channel(f'{server.ip}:{server.port}')
                 server_stub = service_pb2_grpc.MessageServerStub(server_channel)
                 self.servers[server.id] = {"ip": server.ip, "port": server.port, "heartbeat": datetime.now(), "stub": server_stub}
-        
-        # Add the leader to our list of servers as well for ease of use.
-        self.servers[leader_info_response.id] = {"ip": leader_info_response.ip, "port": leader_info_response.port, "stub": leader_stub, "heartbeat": datetime.now()}
-        self.heartbeatThread.start()
+            # Add the leader to our list of servers as well for ease of use.
+            self.servers[leader_info_response.id] = {"ip": leader_info_response.ip, "port": leader_info_response.port, "stub": leader_stub, "heartbeat": datetime.now()}
+            # Start the heartbeats from the replicas to the leader.
+            self.heartbeatThread.start()
+        except Exception as e:
+            logger.error(f"Failed to setup replica with error: {e}")
 
-    def GetServers(self, request, context):
-        for server_id, info in self.servers.items():
-            if not request.requestor_id == server_id:
-                serialized_server = service_pb2.ServerInfoResponse(id=server_id, ip=info["ip"], port=info["port"])
-                yield serialized_server
+    def GetServers(self, request: service_pb2.GetServersRequest, context):
+        """
+        Retrieves a stream of all online, active users via an RPC request.
 
-    def NewReplica(self, request, context):
-        # A new server will call this function first to inform the leader that they now exist.
-        channel = grpc.insecure_channel(f'{request.ip_addr}:{request.port}')
-        stub = service_pb2_grpc.MessageServerStub(channel)
-        self.servers[request.new_replica_id] = {"stub": stub, "heartbeat": datetime.now(), "ip": request.ip_addr, "port": request.port}
+        Parameters:
+            request (GetServersRequest): Contains the request details.
+                - requestor_id (str): The uuid of the server making the request
+            context (RPCContext): The RPC call context, containing information about the client.
 
-        # FORWARD REQUEST TO ALL SERVERS
-        if self.leader["id"] == self.server_id:
-            for id in self.servers:
-                if not request.new_replica_id == id:
-                    try:
-                        self.servers[id]["stub"].NewReplica(request) # Send same request to all servers
-                    except Exception as e:
-                        print("Encountered problem forwarding new replica request to all servers", e)
-        return service_pb2.LeaderResponse(id=self.leader["id"], ip=self.leader["ip"], port=self.leader["port"])
+        Yields (streams):
+            ServerInfoResponse: A stream of responses containing the data about the servers.
+                - id (str): The uuid of the server
+                - ip (str): The ip of the server
+                - port (str): The port of the server
+        """
+        try:
+            logger.info(f"Handling request to GetServers by {request.requestor_id}")
+            for server_id, info in self.servers.items():
+                if not request.requestor_id == server_id:
+                    serialized_server = service_pb2.ServerInfoResponse(id=server_id, ip=info["ip"], port=info["port"])
+                    yield serialized_server
+        except Exception as e:
+            logger.error(f"Failed to retrieve servers with error: {e}")
 
-    def Heartbeat(self, request, context):
-        if request.requestor_id == "Client":
-            # This is just the client checking in.
-            # Treat differently than other heartbeats
-            return service_pb2.HeartbeatResponse(status="Heartbeat received")
-        
-        # Manage heartbeats
-        requestor_id = request.requestor_id
-        server_id = request.server_id
-        # logger.info(f"Heartbeat requested from server: {requestor_id} reaching out to server: {server_id}")
-        self.update_heartbeat(requestor_id)
-        return service_pb2.HeartbeatResponse(status="Heartbeat received")
+    def NewReplica(self, request: service_pb2.NewReplicaRequest, context):
+        """
+        Announces the newly active status of a replica via an RPC request.
+
+        Parameters:
+            request (NewReplicaRequest): Contains the request details.
+                - new_replica_id (str): The uuid of the new replica
+                - ip (str): The ip address of the replica
+                - port (str): The port of the replica
+            context (RPCContext): The RPC call context, containing information about the client.
+
+        Returns LeaderResponse: The information for the Chat application's current leader
+                - id (str): The uuid of the leader
+                - ip (str): The ip of the leader
+                - port (str): The port of the leader
+        """
+        try:
+            logger.info(f"Handling request to add NewReplica with id: {request.new_replica_id} at {request.ip}:{request.port}")
+            # A new server will call this function first to inform the leader that they now exist.
+            channel = grpc.insecure_channel(f'{request.ip}:{request.port}')
+            stub = service_pb2_grpc.MessageServerStub(channel)
+            self.servers[request.new_replica_id] = {"ip": request.ip, "port": request.port, "stub": stub, "heartbeat": datetime.now()}
+
+            logger.info("Forward announcement of new replica to all other servers.")
+            if self.leader["id"] == self.server_id:
+                for id in self.servers:
+                    if not request.new_replica_id == id:
+                        try:
+                            self.servers[id]["stub"].NewReplica(request) # Send same request to all servers
+                        except Exception as e:
+                            logger.error(f"Encountered problem forwarding new replica request to all servers: {e}")
+            return service_pb2.LeaderResponse(id=self.leader["id"], ip=self.leader["ip"], port=self.leader["port"])
+        except Exception as e:
+            logger.error(f"Creating NewReplica failed with error: {e}")
+
+    def Heartbeat(self, request: service_pb2.HeartbeatRequest, context):
+        """
+        Handles sending heartbeats via an RPC request.
+
+        Parameters:
+            request (HeartbeatRequest): Contains the request details.
+                - requestor_id (str): The id of the server sending the heartbeat
+                - server_id (str): The id of the intended recipient of the heartbeat
+            context (RPCContext): The RPC call context, containing information about the client.
+
+        Returns HeartbeatResponse: The response of the server to the heartbeat request.
+                - responder_id (str): The id of the server responding to the heartbeat
+                - status (str): A description of the state
+        """
+        try:
+            logger.info(f"Heartbeat requested from server: {request.requestor_id} reaching out to server: {request.server_id}")
+            if request.requestor_id == "Client":
+                # This is just the client checking in to ensure this server is still alive.
+                return service_pb2.HeartbeatResponse(status="Heartbeat received")
+            
+            # Since we received a request from the requestor, we know they are still active.
+            # Update the timestamp of the requestor and send a response.
+            requestor_id = request.requestor_id
+            server_id = request.server_id
+            self.update_heartbeat(requestor_id)
+            return service_pb2.HeartbeatResponse(responder_id=self.server_id, status="Heartbeat received")
+        except Exception as e:
+            logger.error(f"Error occurred in Heartbeat request: {e}")
 
     def update_heartbeat(self, id):
-        # Update heartbeat timestamp for the server
+        """Update heartbeat timestamp for the server"""
+        logger.info(f"Heartbeat from {id} updated at {self.servers[id]}")
         self.servers[id]["heartbeat"] = datetime.now()
-        # logger.info(f"Heartbeat from {id} updated at {self.servers[id]}")
 
     def _heartbeat(self):
+        """Handle the background daemon of sending heartbeats and removing failed servers."""
         if self.leader["id"] == self.server_id:
             # If I am the leader, I don't need to send heartbeats, but if I stop receiving
             # them from the replicas, then I know something has gone wrong with the replica.
             self.check_and_remove_failed_replicas()
-            threading.Timer(2, self._heartbeat).start()  # Schedule the next heartbeat in 2 seconds
+            threading.Timer(1, self._heartbeat).start()  # Schedule the next heartbeat in 2 seconds
         else:
             for id in self.servers:
-                # Create the stub for each server
                 try:
                     heartbeat_request = self.servers[id]["stub"].Heartbeat(service_pb2.HeartbeatRequest(requestor_id=self.server_id, server_id=id))
                     self.update_heartbeat(id)
                 except Exception as e:
-                    # TODO
-                    # This means the connection has disappeared?
-                    # logger.error(f"Unable to reach server in _heartbeat with error {e}")
+                    # We handle the exceptions from failed servers in the check_and_remove_failed_replicas()
                     pass
             self.check_and_remove_failed_replicas()
-            threading.Timer(2, self._heartbeat).start()
+            threading.Timer(1, self._heartbeat).start() # Schedule the next heartbeat in 2 seconds
 
     def check_and_remove_failed_replicas(self):
-        # If we are the leader and we lose a replica, no big deal!
-        # If we are a replica and we lose the leader, we must run a new leader election!
+        """Handle failed servers."""
+        logger.info(f"Checking heartbeats and removing failed servers. Current heartbeats: {self.servers}")
 
-        print("checking heartbeats!", self.servers)
-        # Remove replicas that haven't sent a heartbeat in the last 10 seconds
         current_time = datetime.now()
         failed_replicas = []
         for server_id, info in self.servers.items():
             last_heartbeat = info["heartbeat"]
             
             # Ensure last_heartbeat is a datetime object, if not convert it.
-            if isinstance(last_heartbeat, str):  # If it's a string, for example
+            if isinstance(last_heartbeat, str):  # If it's a string
                 last_heartbeat = datetime.fromisoformat(last_heartbeat)  # Convert string to datetime
             
             # Check the difference between current time and last heartbeat
-            if current_time - last_heartbeat > timedelta(seconds=5):
-                print(f"Server {server_id} has failed!!!! Removing now!")
+            if current_time - last_heartbeat > timedelta(seconds=3):
+                logger.warning(f"Server {server_id} has failed due to lack of heartbeat response! Removing now.")
                 failed_replicas.append(server_id)
         
         for id in failed_replicas:
             del self.servers[id]
-            # DatabaseManager.remove_server(server_id)
             if id == self.leader["id"]:
                 # If we have lost the leader, then we must facilitate a new leader election!
                 self.run_election()
 
     def run_election(self):
-        # Since we have lost the leader, let's elect the leader with the lowest UUID out of those that remain in our
-        # servers.
-
-        # We assume that we will be correct, but then call others to verify that our leader is correct.
+        """Handle electing a new leader. Utilises the lowest UUID of the existing servers."""
+        # If we are the only server remaining, we become the leader.
         if len(self.servers) == 0:
-            # We are the only one alive!! We are the leader!
             self.leader["id"] = self.server_id
             self.leader["ip"] = self.ip
             self.leader["port"] = self.port
             channel = grpc.insecure_channel(f'{self.ip}:{self.port}')
             stub = service_pb2_grpc.MessageServerStub(channel)
             self.leader["stub"] = stub
+            return
+
+        # Otherwise, elect a new leader by finding the lowest UUID between this server's uuid and the
+        # other servers.
+        all_servers = list(self.servers.keys()) + [self.server_id]
+        next_leader_id = min(all_servers)
+        self.leader["id"] = next_leader_id
+
+        if next_leader_id == self.server_id:
+            logger.info("Server has become the new leader.")
+            self.leader["ip"] = self.ip
+            self.leader["port"] = self.port
+            channel = grpc.insecure_channel(f'{self.ip}:{self.port}')
+            stub = service_pb2_grpc.MessageServerStub(channel)
+            self.leader["stub"] = stub
         else:
-            all_servers = list(self.servers.keys()) + [self.server_id]
-            print("all servers: ", all_servers)
-            next_leader_id = min(all_servers)
-            print("we need to elect a new leader: ", next_leader_id)
-
-            print("NEW LEADER BEING SET", )
-            self.leader["id"] = next_leader_id
-
-            if next_leader_id == self.server_id:
-                print("I AM THE NEW LEADER")
-                self.leader["ip"] = self.ip
-                self.leader["port"] = self.port
-                channel = grpc.insecure_channel(f'{self.ip}:{self.port}')
-                stub = service_pb2_grpc.MessageServerStub(channel)
-                self.leader["stub"] = stub
-            else:
-                print("I AM NOT THE NEW LEADER")
-                self.leader["ip"] = self.servers[next_leader_id]["ip"]
-                self.leader["port"] = self.servers[next_leader_id]["port"]
-                self.leader["stub"] = self.servers[next_leader_id]["stub"]
-
-
-    def ElectLeader(self, request, context):
-        # The leader must have died!
-        # Verify?? #TODO 
-        # logger.info("Electing leader")
-        # next_leader_id = min(self.servers.keys())
-        # print("NEW LEADER IS ", next_leader_id)
-        # # Set this to be new leader
-        # self.leader["id"] = next_leader_id
-        # self.leader["ip"] = self.servers[next_leader_id]["ip"]
-        # self.leader["port"] = self.servers[next_leader_id]["port"]
-        # self.leader["stub"] = self.servers[next_leader_id]["stub"]
-
-        # return service_pb2.LeaderResponse(id=self.leader["id"], ip=self.leader["ip"], port=self.leader["port"])
-        pass
+            logger.info("This process is still a replica. A new leader has been selected.")
+            self.leader["ip"] = self.servers[next_leader_id]["ip"]
+            self.leader["port"] = self.servers[next_leader_id]["port"]
+            self.leader["stub"] = self.servers[next_leader_id]["stub"]
