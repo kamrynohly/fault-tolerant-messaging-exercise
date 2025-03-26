@@ -30,7 +30,6 @@ logger = logging.getLogger(__name__)
 
 # MARK: Client Class
 class Client:
-
     """
     The Client class creates our UI and the callbacks that make requests to the server.
     """
@@ -38,66 +37,49 @@ class Client:
     def __init__(self, host, port):
         self.host = host
         self.port = port
-        # self.channel = grpc.insecure_channel(f'{host}:{port}')
-        # self.stub = service_pb2_grpc.MessageServerStub(self.channel)
         self.root = tk.Tk()
         self.show_login_ui()
 
         # Create a background task for monitoring for new messages from the server.
         self.messageObservation = threading.Thread(target=self._monitor_messages, daemon=True)
 
+        # Handle communication with the servers
         self.current_stub = None
         self.check_servers()
 
+    # MARK: Check Servers
     def check_servers(self):
-        # If we currently have a server, see if it is still useful.
+        """Find a server that can be communicated with and handle changes in servers."""
         try:
-            # print("In check servers!")
+            # If we already have a server that we are using to communicate, verify that it is still alive.
             if self.current_stub != None:
-                print("IN FIRST THING")
-                # Check if it exists, if there is no response after 2 seconds, move on
+                # If there is no response after 2 seconds, assume the server has died.
+                # Otherwise, no changes are needed.
                 response = self.current_stub.Heartbeat(service_pb2.HeartbeatRequest(requestor_id="Client", server_id=""), timeout=2)
-                print(response)
                 return
-                # Our current server is still working, so no changes needed.
+            # Otherwise, look for a new server using the servers in the client_config.py file.
             else:
-                print("IN ELSE")
-                # Look for a new server
                 self.current_stub = None
                 for server in SERVERS:
-                    print(server)
                     try:
                         channel = grpc.insecure_channel(f'{server["ip"]}:{server["port"]}')
                         stub = service_pb2_grpc.MessageServerStub(channel)
                         # Check if it exists, if there is no response after 2 seconds, move on
                         stub.Heartbeat(service_pb2.HeartbeatRequest(requestor_id="Client", server_id=""), timeout=2)
-                        # If we got a valid response, use this!
+                        # If we got a valid response, use this server.
                         self.current_stub = stub
-                        print("FOUND IT!")
+                        logger.info(f"Found server to use with info: {server["ip"]}:{server["port"]}")
                         break
                     except Exception as e:
-                        # Not this one!
+                        # This means that the given server is unavailable.
                         self.current_stub = None
                         continue 
         except Exception as e:
-            # Look for a new server
-            # for server in SERVERS:
-            #     try:
-            #         channel = grpc.insecure_channel(f'{server["ip"]}:{server["port"]}')
-            #         stub = service_pb2_grpc.MessageServerStub(channel)
-            #         # Check if it exists, if there is no response after 2 seconds, move on
-            #         stub.Heartbeat(service_pb2.HeartbeatRequest(requestor_id="Client", server_id=""), timeout=2)
-            #         # If we got a valid response, use this!
-            #         self.current_stub = stub
-            #     except Exception as e:
-            #         # Not this one!
-            #         continue 
-            print("IN EXCEPTION")
+            # If something has gone wrong, start over until a suitable server is discovered.
             self.current_stub = None
-            time.sleep(2)
+            time.sleep(1) # To give time for replicas to come back online and/or to waste unnecessary calls.
             self.check_servers()
 
-    
     def run(self):
         """Initialize the client."""
         try: 
@@ -145,6 +127,7 @@ class Client:
         # This allows us to be ready to add the messages to the UI instantly.
         self.messageObservation.start()
 
+    # MARK: Authentication
     def _handle_login(self, username : str, password : str):
         """
         Sends a login request to the server and handles the server's response.
@@ -159,7 +142,6 @@ class Client:
         """
         self.check_servers()
         response = self.current_stub.Login(service_pb2.LoginRequest(username=username, password=password, source="Client"))
-        # response = self.get_writable_server("Login", service_pb2.LoginRequest(username=username, password=password, source="Client"))
 
         logger.info(f"Client {username} sent login request to server.")
         if response.status == service_pb2.LoginResponse.LoginStatus.SUCCESS:
@@ -183,8 +165,6 @@ class Client:
         """
         self.check_servers()
         response = self.current_stub.Register(service_pb2.RegisterRequest(username=username, password=password, email=email, source="Client"))
-
-        # response = self.get_writable_server("Register", service_pb2.RegisterRequest(username=username, password=password, email=email, source="Client"))
         
         logger.info(f"Client {username} sent register request to server.")
         if response.status == service_pb2.RegisterResponse.RegisterStatus.SUCCESS:
@@ -195,6 +175,7 @@ class Client:
             logger.warning(f"Register failed for {username} with message {response.message}.")
             messagebox.showerror("Register Failed", response.message)
 
+    # MARK: Setup
     def _handle_setup(self, username):
         '''
         After successful registration or login, handle:
@@ -207,7 +188,6 @@ class Client:
             
             # Get list of users
             try:
-                # user_responses = self.get_writable_server("GetUsers", service_pb2.GetUsersRequest(username=username))
                 user_responses = self.current_stub.GetUsers(service_pb2.GetUsersRequest(username=username))
                 all_users = [user.username for user in user_responses]
                 logger.info(f"Retrieved {len(all_users)} users")
@@ -218,7 +198,6 @@ class Client:
             # Get user settings
             try:
                 settings_response = self.current_stub.GetSettings(service_pb2.GetSettingsRequest(username=username))
-                # settings_response = self.get_writable_server("GetSettings", service_pb2.GetSettingsRequest(username=username))
                 settings = settings_response.setting
                 logger.info(f"Retrieved settings: {settings}")
             except Exception as e:
@@ -229,13 +208,11 @@ class Client:
             try:
                 message_history_iterator = self.current_stub.GetMessageHistory(service_pb2.MessageHistoryRequest(username=username))
                 message_history = [item for item in message_history_iterator]
-                # message_history = self.get_writable_server("GetMessageHistory", service_pb2.MessageHistoryRequest(username=username))
                 logger.info(f"Retrieved {len(message_history)} message history items")
             except Exception as e:
                 logger.error(f"Failed to get message history: {e}")
                 message_history = []  # Default to empty list if we can't get message history
             
-            print("Message history:", message_history)
             return settings, all_users, message_history
             
         except Exception as e:
@@ -243,6 +220,7 @@ class Client:
             # Instead of exiting, return default values
             return 10, [], []  # Default values for settings, all_users, message_history
 
+    # MARK: Messaging
     def _handle_send_message(self, recipient, message):
         """Sends the server a message request and handles potential failures to deliver the message."""
         try: 
@@ -256,7 +234,6 @@ class Client:
                 source="Client"
             )
             response = self.current_stub.SendMessage(message_request)
-            # response = self.get_writable_server("SendMessage", message_request)
             if response.status == service_pb2.MessageResponse.MessageStatus.SUCCESS:
                 logger.info(f"Message sent to {recipient} successfully")
             else:
@@ -279,35 +256,21 @@ class Client:
             original_server = self.current_stub
             while True:
                 try:
-                    # print("about to iterate")
+                    # If we experience a change in leader, we should end this stream and open a new one
+                    # with the new leader.
                     if original_server != self.current_stub:
                         break
                     for message in message_iterator:
                         self.chat_ui.display_message(from_user=message.sender, message=message.message)
                 except Exception as e:
-                    # Maybe our current server died, so reconnect to monitor messages again
-                    # self.check_servers()
-                    print("RESTARTING MONITOR MESSAGES")
+                    # If we experience a disconnect or issue, restart the monitoring.
+                    logger.warning(f"Restarting _monitor_messages after experiencing an exception: {e}")
                     self._monitor_messages()
-            # Restarting
-            print("RESTARTING MONITOR MESSAGES")
-            time.sleep(5)
-            print("after sleep")
+            
+            # If we break out of the loop, it signals that we have a new leader, so restart.
+            logger.warning(f"Restarting _monitor_messages after experiencing a change in server.")
+            time.sleep(3) # Give the new server time to get setup.
             self._monitor_messages()
-
-            # for server in SERVERS:
-            #     try:
-            #         channel = grpc.insecure_channel(f'{server["ip"]}:{server["port"]}')
-            #         stub = service_pb2_grpc.MessageServerStub(channel)
-            #         message_iterator = stub.MonitorMessages(service_pb2.MonitorMessagesRequest(username=self.current_user, source="Client"))
-            #         while True:
-            #             print("about to iterate")
-            #             for message in message_iterator:
-            #                 self.chat_ui.display_message(from_user=message.sender, message=message.message)
-            #     except Exception as e:
-            #         logger.error(f"Failed to establish monitoring connection: {e}")
-            #         # continue
-
         except Exception as e:
             logger.error(f"Failed with error in monitor messages: {e}")
             sys.exit(1)
@@ -322,11 +285,9 @@ class Client:
             logger.info("Send request to get pending messages and update inbox.")
             self.check_servers()
             settings_response = self.current_stub.GetSettings(service_pb2.GetSettingsRequest(username=self.current_user))
-            # settings_response = self.get_writable_server("GetSettings", service_pb2.GetSettingsRequest(username=self.current_user))
             settings = settings_response.setting
             
             responses = self.current_stub.GetPendingMessage(service_pb2.PendingMessageRequest(username=self.current_user, inbox_limit=settings))
-            # responses = self.get_writable_server("GetPendingMessage", service_pb2.PendingMessageRequest(username=self.current_user, inbox_limit=settings))
             pending_messages = {}
             for response in responses:
                 # If there are no messages yet from this sender, create an empty list to add to.
@@ -351,14 +312,12 @@ class Client:
         logger.info(f"Sent request to update settings to have a limit of {settings}")
         self.check_servers()
         response = self.current_stub.SaveSettings(service_pb2.SaveSettingsRequest(username=self.current_user, setting=settings, source="Client"))
-        # response = self.get_writable_server("SaveSettings", service_pb2.SaveSettingsRequest(username=self.current_user, setting=settings, source="Client"))
 
     def _handle_delete_account(self):
         """Send a request to the server to delete the user's account."""
         logger.info("Sending a request to delete account.")
         self.check_servers()
         response = self.current_stub.DeleteAccount(service_pb2.DeleteAccountRequest(username=self.current_user, source="Client"))
-        # response = self.get_writable_server("DeleteAccount", service_pb2.DeleteAccountRequest(username=self.current_user, source="Client"))
         if response.status == service_pb2.DeleteAccountResponse.DeleteAccountStatus.SUCCESS:
             self.root.destroy()
         else:
