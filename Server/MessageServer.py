@@ -456,16 +456,6 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
             )
     
     # MARK: Fault Tolerance
-    def elect_leader(self):
-        # TODO: Implement leader election
-        # logger.info("Electing leader")
-        # primary_server_channel = grpc.insecure_channel('127.0.0.1:5001')
-        # primary_server_stub = service_pb2_grpc.MessageServerStub(primary_server_channel)
-        # self.leader = self.server_id
-        # return primary_server_stub
-        pass
-
-
     def setup(self, ip_connect, port_connect):
         # Connect to another server
         initial_channel = grpc.insecure_channel(f'{ip_connect}:{port_connect}')  # Replace with actual second server address
@@ -490,11 +480,19 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
 
                 server_channel = grpc.insecure_channel(f'{server.ip}:{server.port}')
                 server_stub = service_pb2_grpc.MessageServerStub(server_channel)
-                self.servers[server.id] = {"heartbeat": datetime.now(), "stub": server_stub}
+                self.servers[server.id] = {"ip": server.ip, "port": server.port, "heartbeat": datetime.now(), "stub": server_stub}
         
-        # self.servers[self.leader] = {"ip": response.ip, "port": response.port, "heartbeat": datetime.now()}
+        # Add the leader to our list of servers as well for ease of use.
+        self.servers[leader_info_response.id] = {"ip": leader_info_response.ip, "port": leader_info_response.port, "stub": leader_stub, "heartbeat": datetime.now()}
         self.heartbeatThread.start()
 
+    def GetServers(self, request, context):
+        servers = DatabaseManager.get_servers()
+        print("servers:", servers)
+        for server in servers:
+            if not request.requestor_id == server["server_id"]:
+                serialized_server = service_pb2.ServerInfoResponse(id=server["server_id"], ip=server["ip"], port=server["port"])
+                yield serialized_server
 
     def NewReplica(self, request, context):
         # A new server will call this function first to inform the leader that they now exist.
@@ -505,7 +503,7 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
         
         channel = grpc.insecure_channel(f'{request.ip_addr}:{request.port}')
         stub = service_pb2_grpc.MessageServerStub(channel)
-        self.servers[request.new_replica_id] = {"stub": stub, "heartbeat": datetime.now()}
+        self.servers[request.new_replica_id] = {"stub": stub, "heartbeat": datetime.now(), "ip": request.ip_addr, "port": request.port}
 
         # FORWARD REQUEST TO ALL SERVERS
         if self.leader["id"] == self.server_id:
@@ -531,8 +529,31 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
         # Update heartbeat timestamp for the server
         self.servers[id]["heartbeat"] = datetime.now()
         logger.info(f"Heartbeat from {id} updated at {self.servers[id]}")
-   
+
+    def _heartbeat(self):
+        if self.leader["id"] == self.server_id:
+            # If I am the leader, I don't need to send heartbeats, but if I stop receiving
+            # them from the replicas, then I know something has gone wrong with the replica.
+            self.check_and_remove_failed_replicas()
+            threading.Timer(5, self._heartbeat).start()  # Schedule the next heartbeat in 2 seconds
+        else:
+            for id in self.servers:
+                # Create the stub for each server
+                try:
+                    heartbeat_request = self.servers[id]["stub"].Heartbeat(service_pb2.HeartbeatRequest(requestor_id=self.server_id, server_id=id))
+                    self.update_heartbeat(id)
+                except Exception as e:
+                    # TODO
+                    # This means the connection has disappeared?
+                    # logger.error(f"Unable to reach server in _heartbeat with error {e}")
+                    pass
+            self.check_and_remove_failed_replicas()
+            threading.Timer(2, self._heartbeat).start()
+
     def check_and_remove_failed_replicas(self):
+        # If we are the leader and we lose a replica, no big deal!
+        # If we are a replica and we lose the leader, we must run a new leader election!
+
         print("checking heartbeats!", self.servers)
         # Remove replicas that haven't sent a heartbeat in the last 10 seconds
         current_time = datetime.now()
@@ -552,27 +573,51 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
         for id in failed_replicas:
             del self.servers[id]
             DatabaseManager.remove_server(server_id)
+            if id == self.leader["id"]:
+                # If we have lost the leader, then we must facilitate a new leader election!
+                self.run_election()
 
-    def _heartbeat(self):
-        if self.leader["stub"] == self.server_id:
-            self.check_and_remove_failed_replicas()
-            threading.Timer(5, self._heartbeat).start()  # Schedule the next heartbeat in 2 seconds
+    def run_election(self):
+        # Since we have lost the leader, let's elect the leader with the lowest UUID out of those that remain in our
+        # servers.
+
+        # We assume that we will be correct, but then call others to verify that our leader is correct.
+        if len(self.servers) == 0:
+            # We are the only one alive!! We are the leader!
+            self.leader["id"] = self.server_id
+            self.leader["ip"] = self.ip
+            self.leader["port"] = self.port
+            channel = grpc.insecure_channel(f'{self.ip}:{self.port}')
+            stub = service_pb2_grpc.MessageServerStub(channel)
+            self.leader["stub"] = stub
         else:
-            for id in self.servers:
-                # Create the stub for each server
-                try:
-                    server_channel = grpc.insecure_channel(f'{self.servers[id]["ip"]}:{self.servers[id]["port"]}')  # Replace with actual second server address
-                    stub = service_pb2_grpc.MessageServerStub(server_channel)
-                    response = stub.Heartbeat(service_pb2.HeartbeatRequest(requestor_id=self.server_id, server_id=id))
-                    self.update_heartbeat(id)
-                except Exception as e:
-                    logger.error(f"Unable to reach server in _heartbeat with error {e}")
-            self.check_and_remove_failed_replicas()
-            threading.Timer(2, self._heartbeat).start()
+            next_leader_id = min(self.servers.keys())
 
-    def GetServers(self, request, context):
-        servers = DatabaseManager.get_servers()
-        print("servers:", servers)
-        for server in servers:
-            serialized_server = service_pb2.ServerInfoResponse(id=server["server_id"], ip=server["ip"], port=server["port"])
-            yield serialized_server
+            for id in self.servers:
+                try:
+                    leader_response = self.servers[id]["stub"].ElectLeader(service_pb2.ElectLeaderRequest(requestor_id=self.server_id))
+                    if leader_response.ip != next_leader_id:
+                        print("SOMETHING WENT SO WRONG!!!")
+                except Exception as e:
+                    print("could not connect??")
+            
+            print("NEW LEADER BEING SET", )
+            self.leader["id"] = next_leader_id
+            self.leader["ip"] = self.servers[next_leader_id]["ip"]
+            self.leader["port"] = self.servers[next_leader_id]["port"]
+            self.leader["stub"] = self.servers[next_leader_id]["stub"]
+
+
+    def ElectLeader(self, request, context):
+        # The leader must have died!
+        # Verify?? #TODO 
+        logger.info("Electing leader")
+        next_leader_id = min(self.servers.keys())
+        print("NEW LEADER IS ", next_leader_id)
+        # Set this to be new leader
+        self.leader["id"] = next_leader_id
+        self.leader["ip"] = self.servers[next_leader_id]["ip"]
+        self.leader["port"] = self.servers[next_leader_id]["port"]
+        self.leader["stub"] = self.servers[next_leader_id]["stub"]
+
+        return service_pb2.LeaderResponse(id=self.leader["id"], ip=self.leader["ip"], port=self.leader["port"])
