@@ -1,227 +1,248 @@
-import unittest
-from unittest.mock import MagicMock, patch
-import sys
+
+import sys, os
+sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
+
 import os
-from collections import defaultdict
-from datetime import datetime
+import sqlite3
+import unittest
+from datetime import datetime, timedelta
+from types import SimpleNamespace
 
-# Add the project root to the path
-project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(project_root)
-
-# Import proto files
+# Import the server and its dependencies.
+from MessageServer import MessageServer
+from DatabaseManager import DatabaseManager
 from proto import service_pb2
-from proto import service_pb2_grpc
 
-# Import the MessageServer class
-from Server.main import MessageServer
 
-# Import your AuthHandler
-from Server.AuthHandler import AuthHandler
+# --- Dummy Classes for Testing --- #
+
+class DummyContext:
+    """A dummy gRPC context with an is_active() method."""
+    def is_active(self):
+        return True
+
+class OneTimeActiveContext:
+    """A dummy context that is active only once (for MonitorMessages test)."""
+    def __init__(self):
+        self.calls = 0
+    def is_active(self):
+        if self.calls < 1:
+            self.calls += 1
+            return True
+        return False
+
+class DummyAuthHandler:
+    """A dummy authentication handler that always returns success."""
+    def register_user(self, username, password, email):
+        return (True, "Registration successful")
+    def authenticate_user(self, username, password):
+        return (True, "Login successful")
+
+
+# --- Test Suite --- #
 
 class TestMessageServer(unittest.TestCase):
-    def setUp(self):    
-        # Create a server instance for testing with required ip and port parameters
-        self.server = MessageServer(ip="127.0.0.1", port="5000")
-        
-        # Mock the context
-        self.context = MagicMock()
-        
-        # Initialize server state for testing
-        self.server.active_clients = {}
-        self.server.message_queue = defaultdict(list)
-        self.server.pending_messages = defaultdict(list)
-        
-        # Create a test AuthHandler instance and set it in the test class
-        self.auth_handler = AuthHandler("127.0.0.1", "5000")
-        
-        # Patch the server's auth_manager to use our test auth_handler
-        self.server.auth_manager = self.auth_handler
-    
-    def test_register_success(self):
-        # Create a request
-        request = service_pb2.RegisterRequest(
-            username="testuser",
-            password="testpassword",
-            email="test@example.com"
+    def setUp(self):
+        # Use a test-specific IP and port.
+        self.ip = "127.0.0.1"
+        self.port = "5001"
+        # Instantiate the server as leader (no ip_connect/port_connect)
+        self.server = MessageServer(self.ip, self.port)
+        # Override the auth_manager with our dummy version.
+        self.server.auth_manager = DummyAuthHandler()
+        # Make sure the database is set up cleanly.
+        self.db_file = f"{self.ip}_{self.port}.db"
+
+    def tearDown(self):
+        # Remove the database file after each test.
+        if os.path.exists(self.db_file):
+            os.remove(self.db_file)
+
+    def test_register(self):
+        request = SimpleNamespace(
+            username="user1",
+            password="pass1",
+            email="user1@example.com",
+            source="Client"
         )
-        
-        # Mock the AuthHandler.register_user method
-        with patch.object(self.auth_handler, 'register_user', return_value=(True, "Success")):
-            response = self.server.Register(request, self.context)
-            
-            # Assert the response is correct
-            self.assertEqual(response.status, service_pb2.RegisterResponse.RegisterStatus.SUCCESS)
-            self.assertIn("Success", response.message)
-    
-    def test_register_failure(self):
-        # Create a request with existing username
-        request = service_pb2.RegisterRequest(
-            username="existinguser",
-            password="testpassword",
-            email="test@example.com"
+        context = DummyContext()
+        response = self.server.Register(request, context)
+        # Check that the response indicates success.
+        self.assertEqual(response.status, service_pb2.RegisterResponse.RegisterStatus.SUCCESS)
+        self.assertEqual(response.message, "Registration successful")
+
+    def test_login(self):
+        request = SimpleNamespace(
+            username="user1",
+            password="pass1",
+            source="Client"
         )
-        
-        # Mock the AuthHandler.register_user method to return failure
-        with patch.object(self.auth_handler, 'register_user', return_value=(False, "Username already exists")):
-            response = self.server.Register(request, self.context)
-            
-            # It seems the actual implementation returns 0 for failure status
-            self.assertEqual(response.status, 0)  # Using raw value instead of enum
-            self.assertIn("already exists", response.message)
+        context = DummyContext()
+        response = self.server.Login(request, context)
+        self.assertEqual(response.status, service_pb2.LoginResponse.LoginStatus.SUCCESS)
+        self.assertEqual(response.message, "Login successful")
+
+    def test_get_users(self):
+        # Insert a dummy user into the users table.
+        with sqlite3.connect(self.server.db_manager.db_name) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO users (username, password_hash, email) VALUES (?, ?, ?)",
+                ("user1", "hash", "user1@example.com")
+            )
+            conn.commit()
+        request = SimpleNamespace(username="user1")
+        context = DummyContext()
+        responses = list(self.server.GetUsers(request, context))
+        usernames = [resp.username for resp in responses if resp.username]
+        self.assertIn("user1", usernames)
+
     
-    def test_login_success(self):
-        # Create a request
-        request = service_pb2.LoginRequest(
-            username="testuser",
-            password="testpassword"
-        )
-        
-        # Mock the authentication to return success
-        with patch.object(self.auth_handler, 'authenticate_user', return_value=(True, "Success")):
-            response = self.server.Login(request, self.context)
-            
-            # Assert the response is correct
-            self.assertEqual(response.status, service_pb2.LoginResponse.LoginStatus.SUCCESS)
-            self.assertIn("Success", response.message)
-    
-    def test_login_failure(self):
-        # Create a request with wrong credentials
-        request = service_pb2.LoginRequest(
-            username="testuser",
-            password="wrongpassword"
-        )
-        
-        # Mock the authentication to return failure
-        with patch.object(self.auth_handler, 'authenticate_user', return_value=(False, "Invalid credentials")):
-            response = self.server.Login(request, self.context)
-            
-            # Assert the response is correct
-            self.assertEqual(response.status, service_pb2.LoginResponse.LoginStatus.FAILURE)
-            self.assertIn("Invalid", response.message)
-    
-    def test_send_message_to_active_client(self):
-        # Create a message
-        request = service_pb2.Message(
+
+    def test_send_message_active(self):
+        # Simulate an active client for recipient "user2".
+        class ActiveClientStream:
+            def is_active(self):
+                return True
+        self.server.active_clients["user2"] = ActiveClientStream()
+        timestamp = str(datetime.now())
+        request = SimpleNamespace(
             sender="user1",
             recipient="user2",
-            message="Hello!",
-            timestamp="2023-01-01 12:00:00"
+            message="Test message",
+            timestamp=timestamp,
+            source="Client"
         )
-        
-        # Set up an active client with a mock context that is active
-        mock_context = MagicMock()
-        mock_context.is_active.return_value = True
-        self.server.active_clients = {"user2": mock_context}
-        
-        # Send the message
-        response = self.server.SendMessage(request, self.context)
-        
-        # Assert the response is correct
+        context = DummyContext()
+        response = self.server.SendMessage(request, context)
         self.assertEqual(response.status, service_pb2.MessageResponse.MessageStatus.SUCCESS)
-        
-        # Assert the message was added to the queue
-        self.assertEqual(len(self.server.message_queue["user2"]), 1)
-        self.assertEqual(self.server.message_queue["user2"][0].sender, "user1")
-        self.assertEqual(self.server.message_queue["user2"][0].message, "Hello!")
-    
-    def test_send_message_to_inactive_client(self):
-        # Create a message
-        request = service_pb2.Message(
+        # Verify that the message was queued for streaming.
+        self.assertGreater(len(self.server.message_queue["user2"]), 0)
+
+    def test_send_message_inactive(self):
+        # Ensure that "user3" is not active.
+        if "user3" in self.server.active_clients:
+            del self.server.active_clients["user3"]
+        timestamp = str(datetime.now())
+        request = SimpleNamespace(
             sender="user1",
             recipient="user3",
-            message="Hello!",
-            timestamp="2023-01-01 12:00:00"
+            message="Test message inactive",
+            timestamp=timestamp,
+            source="Client"
         )
-        
-        # No active clients
-        self.server.active_clients = {}
-        
-        # Send the message
-        response = self.server.SendMessage(request, self.context)
-        
-        # Assert the response is correct
+        context = DummyContext()
+        response = self.server.SendMessage(request, context)
         self.assertEqual(response.status, service_pb2.MessageResponse.MessageStatus.SUCCESS)
-        
-        # Check if the message was added to pending_messages directly
-        # Instead of asserting the length, just check that the message exists
-        found = False
-        for pending_msg in self.server.pending_messages.get("user3", []):
-            if (pending_msg.sender == "user1" and 
-                pending_msg.recipient == "user3" and 
-                pending_msg.message == "Hello!"):
-                found = True
-                break
-        
-        # Only assert if pending_messages is being used by the implementation
-        if len(self.server.pending_messages.get("user3", [])) > 0:
-            self.assertTrue(found, "Message was not properly added to pending messages")
-    
-    def test_get_pending_messages(self):
-        # Create a request
-        request = service_pb2.PendingMessageRequest(username="testuser", inbox_limit=10)
-        
-        # Add some pending messages
-        message1 = service_pb2.Message(
+        # Check that the message was saved as pending (isPending == True).
+        with sqlite3.connect(self.server.db_manager.db_name) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT isPending FROM messages WHERE sender=? AND recipient=? AND message=?",
+                ("user1", "user3", "Test message inactive")
+            )
+            result = cursor.fetchone()
+            self.assertIsNotNone(result)
+            # SQLite stores Boolean True as 1.
+            self.assertEqual(result[0], 1)
+
+    def test_delete_account(self):
+        # Insert a dummy user to be deleted.
+        with sqlite3.connect(self.server.db_manager.db_name) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO users (username, password_hash, email) VALUES (?, ?, ?)",
+                ("user_del", "hash", "user_del@example.com")
+            )
+            conn.commit()
+        request = SimpleNamespace(username="user_del", source="Client")
+        context = DummyContext()
+        response = self.server.DeleteAccount(request, context)
+        self.assertEqual(response.status, service_pb2.DeleteAccountResponse.DeleteAccountStatus.SUCCESS)
+        # Verify that the user was removed from the database.
+        with sqlite3.connect(self.server.db_manager.db_name) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM users WHERE username=?", ("user_del",))
+            result = cursor.fetchone()
+            self.assertIsNone(result)
+
+    def test_save_get_settings(self):
+        # Insert a dummy user with default settings.
+        with sqlite3.connect(self.server.db_manager.db_name) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO users (username, password_hash, email, settings) VALUES (?, ?, ?, ?)",
+                ("user_set", "hash", "user_set@example.com", 50)
+            )
+            conn.commit()
+        # First, test GetSettings.
+        request_get = SimpleNamespace(username="user_set")
+        context = DummyContext()
+        response_get = self.server.GetSettings(request_get, context)
+        self.assertEqual(response_get.setting, 50)
+        # Then, update the settings via SaveSettings.
+        request_save = SimpleNamespace(username="user_set", setting=100, source="Client")
+        response_save = self.server.SaveSettings(request_save, context)
+        self.assertEqual(response_save.status, service_pb2.SaveSettingsResponse.SaveSettingsStatus.SUCCESS)
+        # Verify the updated settings.
+        response_get2 = self.server.GetSettings(request_get, context)
+        self.assertEqual(response_get2.setting, 100)
+
+
+    def test_new_replica(self):
+        request = SimpleNamespace(
+            new_replica_id="replica1",
+            ip="127.0.0.2",
+            port="5002"
+        )
+        context = DummyContext()
+        leader_response = self.server.NewReplica(request, context)
+        self.assertIn("replica1", self.server.servers)
+        self.assertEqual(leader_response.id, self.server.leader["id"])
+
+    def test_get_servers(self):
+        # Populate server.servers with dummy entries.
+        self.server.servers = {
+            "server1": {"ip": "127.0.0.2", "port": "5002", "stub": None, "heartbeat": datetime.now()},
+            "server2": {"ip": "127.0.0.3", "port": "5003", "stub": None, "heartbeat": datetime.now()}
+        }
+        request = SimpleNamespace(requestor_id="server1")
+        context = DummyContext()
+        responses = list(self.server.GetServers(request, context))
+        for resp in responses:
+            self.assertNotEqual(resp.id, "server1")
+
+    def test_monitor_messages(self):
+        # Set up a message in the queue for a given user.
+        self.server.message_queue["user_monitor"] = []
+        # Use a proto Message to simulate a pending message.
+        message = service_pb2.Message(
             sender="user1",
-            recipient="testuser",
-            message="Hello!",
-            timestamp="2023-01-01 12:00:00"
+            recipient="user_monitor",
+            message="Hello Monitor",
+            timestamp=str(datetime.now())
         )
-        
-        message2 = service_pb2.Message(
-            sender="user2",
-            recipient="testuser",
-            message="Hi there!",
-            timestamp="2023-01-01 12:01:00"
-        )
-        
-        # Manually add messages to the pending_messages dictionary
-        self.server.pending_messages["testuser"] = [message1, message2]
-        
-        # Mock the GetPendingMessage method to return our messages
-        with patch.object(self.server, 'GetPendingMessage') as mock_get_pending:
-            # Set up the mock to yield the expected responses
-            mock_get_pending.return_value = [
-                service_pb2.PendingMessageResponse(message=message1),
-                service_pb2.PendingMessageResponse(message=message2)
-            ]
-            
-            # Call the method directly with our mocked return value
-            responses = list(mock_get_pending(request, self.context))
-            
-            # Assert the responses are correct
-            self.assertEqual(len(responses), 2)
-            self.assertEqual(responses[0].message.sender, "user1")
-            self.assertEqual(responses[0].message.message, "Hello!")
-            self.assertEqual(responses[1].message.sender, "user2")
-            self.assertEqual(responses[1].message.message, "Hi there!")
-    
-    def test_delete_account_success(self):
-        # Create a request
-        request = service_pb2.DeleteAccountRequest(username="testuser")
-        
-        # Since we don't know exact implementation, use patch at the method level
-        with patch.object(self.server, 'DeleteAccount', return_value=service_pb2.DeleteAccountResponse(
-            status=service_pb2.DeleteAccountResponse.DeleteAccountStatus.SUCCESS
-        )):
-            response = self.server.DeleteAccount(request, self.context)
-            
-            # Assert the response has the expected status
-            self.assertEqual(response.status, service_pb2.DeleteAccountResponse.DeleteAccountStatus.SUCCESS)
-    
-    def test_save_settings_success(self):
-        # Create a request
-        request = service_pb2.SaveSettingsRequest(username="testuser", setting=75)
-        
-        # Since we don't know exact implementation, use patch at the method level
-        with patch.object(self.server, 'SaveSettings', return_value=service_pb2.SaveSettingsResponse(
-            status=service_pb2.SaveSettingsResponse.SaveSettingsStatus.SUCCESS
-        )):
-            response = self.server.SaveSettings(request, self.context)
-            
-            # Assert the response has the expected status
-            self.assertEqual(response.status, service_pb2.SaveSettingsResponse.SaveSettingsStatus.SUCCESS)
+        self.server.message_queue["user_monitor"].append(message)
+        request = SimpleNamespace(username="user_monitor", source="Client")
+        context = OneTimeActiveContext()
+        gen = self.server.MonitorMessages(request, context)
+        try:
+            msg = next(gen)
+            self.assertEqual(msg.message, "Hello Monitor")
+        except StopIteration:
+            self.fail("MonitorMessages generator did not yield a message")
+
+    def test_run_election(self):
+        # Add dummy servers with fixed UUIDs.
+        self.server.servers = {
+            "a-replica": {"ip": "127.0.0.2", "port": "5002", "stub": None, "heartbeat": datetime.now()},
+            "z-replica": {"ip": "127.0.0.3", "port": "5003", "stub": None, "heartbeat": datetime.now()}
+        }
+        # Force the leader to be a replica that is not the lowest.
+        self.server.leader["id"] = "z-replica"
+        self.server.run_election()
+        expected_leader = min(["a-replica", "z-replica", self.server.server_id])
+        self.assertEqual(self.server.leader["id"], expected_leader)
 
 if __name__ == "__main__":
     unittest.main()
