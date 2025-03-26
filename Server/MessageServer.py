@@ -594,33 +594,41 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
             stub = service_pb2_grpc.MessageServerStub(channel)
             self.leader["stub"] = stub
         else:
-            next_leader_id = min(self.servers.keys())
+            all_servers = list(self.servers.keys()) + [self.server_id]
+            print("all servers: ", all_servers)
+            next_leader_id = min(all_servers)
+            print("we need to elect a new leader: ", next_leader_id)
 
-            for id in self.servers:
-                try:
-                    leader_response = self.servers[id]["stub"].ElectLeader(service_pb2.ElectLeaderRequest(requestor_id=self.server_id))
-                    if leader_response.ip != next_leader_id:
-                        print("SOMETHING WENT SO WRONG!!!")
-                except Exception as e:
-                    print("could not connect??")
-            
             print("NEW LEADER BEING SET", )
             self.leader["id"] = next_leader_id
-            self.leader["ip"] = self.servers[next_leader_id]["ip"]
-            self.leader["port"] = self.servers[next_leader_id]["port"]
-            self.leader["stub"] = self.servers[next_leader_id]["stub"]
+
+            if next_leader_id == self.server_id:
+                print("I AM THE NEW LEADER")
+                self.leader["ip"] = self.ip
+                self.leader["port"] = self.port
+                channel = grpc.insecure_channel(f'{self.ip}:{self.port}')
+                stub = service_pb2_grpc.MessageServerStub(channel)
+                self.leader["stub"] = stub
+            else:
+                print("I AM NOT THE NEW LEADER")
+                self.leader["ip"] = self.servers[next_leader_id]["ip"]
+                self.leader["port"] = self.servers[next_leader_id]["port"]
+                self.leader["stub"] = self.servers[next_leader_id]["stub"]
+
+            print("todo: ALERT CLIENT")
 
 
     def ElectLeader(self, request, context):
         # The leader must have died!
         # Verify?? #TODO 
-        logger.info("Electing leader")
-        next_leader_id = min(self.servers.keys())
-        print("NEW LEADER IS ", next_leader_id)
-        # Set this to be new leader
-        self.leader["id"] = next_leader_id
-        self.leader["ip"] = self.servers[next_leader_id]["ip"]
-        self.leader["port"] = self.servers[next_leader_id]["port"]
-        self.leader["stub"] = self.servers[next_leader_id]["stub"]
+        # logger.info("Electing leader")
+        # next_leader_id = min(self.servers.keys())
+        # print("NEW LEADER IS ", next_leader_id)
+        # # Set this to be new leader
+        # self.leader["id"] = next_leader_id
+        # self.leader["ip"] = self.servers[next_leader_id]["ip"]
+        # self.leader["port"] = self.servers[next_leader_id]["port"]
+        # self.leader["stub"] = self.servers[next_leader_id]["stub"]
 
-        return service_pb2.LeaderResponse(id=self.leader["id"], ip=self.leader["ip"], port=self.leader["port"])
+        # return service_pb2.LeaderResponse(id=self.leader["id"], ip=self.leader["ip"], port=self.leader["port"])
+        pass

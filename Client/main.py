@@ -15,6 +15,7 @@ from UI.signup import LoginUI
 from UI.chat import ChatUI
 import tkinter as tk
 from tkinter import ttk, messagebox
+from client_config import SERVERS
 
 
 # MARK: Logger Initialization
