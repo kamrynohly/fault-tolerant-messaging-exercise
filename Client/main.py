@@ -37,14 +37,90 @@ class Client:
     def __init__(self, host, port):
         self.host = host
         self.port = port
-        self.channel = grpc.insecure_channel(f'{host}:{port}')
-        self.stub = service_pb2_grpc.MessageServerStub(self.channel)
+        # self.channel = grpc.insecure_channel(f'{host}:{port}')
+        # self.stub = service_pb2_grpc.MessageServerStub(self.channel)
         self.root = tk.Tk()
         self.show_login_ui()
 
         # Create a background task for monitoring for new messages from the server.
         self.messageObservation = threading.Thread(target=self._monitor_messages, daemon=True)
 
+    def get_writable_server(self, type, request):
+        last_error = None
+        for server in SERVERS:
+            print(f"CONNECT TO SERVER REQUEST RECEIVED for {type}:", server)
+            try:
+                channel = grpc.insecure_channel(f'{server["ip"]}:{server["port"]}')
+                stub = service_pb2_grpc.MessageServerStub(channel)
+                
+                # Handle streaming RPCs differently
+                if type in ["GetUsers", "GetMessageHistory", "GetPendingMessage", "MonitorMessages"]:
+                    try:
+                        # For streaming RPCs, we need to return an iterator
+                        match type:
+                            case "GetUsers":
+                                iterator = stub.GetUsers(request)
+                            case "GetMessageHistory":
+                                iterator = stub.GetMessageHistory(request)
+                            case "GetPendingMessage":
+                                iterator = stub.GetPendingMessage(request)
+                            case "MonitorMessages":
+                                iterator = stub.MonitorMessages(request)
+                        
+                        # Test if we can iterate through the stream
+                        # For streaming RPCs, we need to test if the connection works
+                        # by trying to get at least one item from the stream
+                        if type != "MonitorMessages":  # MonitorMessages is a special case
+                            # Create a list to store the results
+                            results = []
+                            # Test if we can iterate through the stream
+                            for item in iterator:
+                                results.append(item)
+                            print(f"Stream test for {type} successful")
+                            # Return the results as a list
+                            return results
+                        else:
+                            # MonitorMessages is a special case, we just return the iterator
+                            print(f"Stream connection for {type} established")
+                            return iterator
+                    except Exception as e:
+                        print(f"Streaming RPC error for {type}: {e}")
+                        last_error = e
+                        continue
+                else:
+                    # For non-streaming RPCs, we can just call the method directly
+                    try:
+                        match type:
+                            case "Login":
+                                response = stub.Login(request)
+                            case "Register":
+                                response = stub.Register(request)
+                            case "GetSettings":
+                                response = stub.GetSettings(request)
+                            case "SendMessage":
+                                response = stub.SendMessage(request)
+                            case "SaveSettings":
+                                response = stub.SaveSettings(request)
+                            case "DeleteAccount":
+                                response = stub.DeleteAccount(request)
+                        
+                        print(f"RPC for {type} completed successfully")
+                        return response
+                    except Exception as e:
+                        print(f"RPC error for {type}: {e}")
+                        last_error = e
+                        continue
+
+            except Exception as e:
+                print(f"Connection error to {server['ip']}:{server['port']}: {e}")
+                logger.error(f"Failed to connect to server {server['ip']}:{server['port']} with error: {e}")
+                last_error = e
+                continue
+        
+        # If we get here, all servers failed
+        raise Exception(f"Failed to connect to any server for {type}: {last_error}")
+    
+    
     def run(self):
         """Initialize the client."""
         try: 
@@ -104,7 +180,9 @@ class Client:
         Returns:
             If successful, shows the chat, otherwise presents a failure message.
         """
-        response = self.stub.Login(service_pb2.LoginRequest(username=username, password=password))
+        # response = self.stub.Login(service_pb2.LoginRequest(username=username, password=password))
+        response = self.get_writable_server("Login", service_pb2.LoginRequest(username=username, password=password))
+
         logger.info(f"Client {username} sent login request to server.")
         if response.status == service_pb2.LoginResponse.LoginStatus.SUCCESS:
             settings, all_users, message_history = self._handle_setup(username)
@@ -126,7 +204,10 @@ class Client:
             If successful, shows the chat, otherwise presents a failure message.
         """
 
-        response = self.stub.Register(service_pb2.RegisterRequest(username=username, password=password, email=email))
+        # response = self.stub.Register(service_pb2.RegisterRequest(username=username, password=password, email=email))
+
+        response = self.get_writable_server("Register", service_pb2.RegisterRequest(username=username, password=password, email=email))
+        
         logger.info(f"Client {username} sent register request to server.")
         if response.status == service_pb2.RegisterResponse.RegisterStatus.SUCCESS:
             logger.info(f"Client {username} registered successfully.")
@@ -144,22 +225,40 @@ class Client:
         '''
         try:
             logger.info(f"Setting up users and settings for {username}")
-            user_responses = self.stub.GetUsers(service_pb2.GetUsersRequest(username=username))            
-            all_users = [user.username for user in user_responses]
-
-            settings_response = self.stub.GetSettings(service_pb2.GetSettingsRequest(username=username))
-            settings = settings_response.setting
-                    
-
+            
+            # Get list of users
+            try:
+                user_responses = self.get_writable_server("GetUsers", service_pb2.GetUsersRequest(username=username))
+                all_users = [user.username for user in user_responses]
+                logger.info(f"Retrieved {len(all_users)} users")
+            except Exception as e:
+                logger.error(f"Failed to get users: {e}")
+                all_users = []  # Default to empty list if we can't get users
+            
+            # Get user settings
+            try:
+                settings_response = self.get_writable_server("GetSettings", service_pb2.GetSettingsRequest(username=username))
+                settings = settings_response.setting
+                logger.info(f"Retrieved settings: {settings}")
+            except Exception as e:
+                logger.error(f"Failed to get settings: {e}")
+                settings = 10  # Default to a reasonable value if we can't get settings
+            
             # Get message history
-            message_history_request = self.stub.GetMessageHistory(service_pb2.MessageHistoryRequest(username=username))
-            message_history = [message for message in message_history_request]
+            try:
+                message_history = self.get_writable_server("GetMessageHistory", service_pb2.MessageHistoryRequest(username=username))
+                logger.info(f"Retrieved {len(message_history)} message history items")
+            except Exception as e:
+                logger.error(f"Failed to get message history: {e}")
+                message_history = []  # Default to empty list if we can't get message history
+            
             print("Message history:", message_history)
-
             return settings, all_users, message_history
+            
         except Exception as e:
             logger.error(f"Failed in setup with error: {e}")
-            sys.exit(1)
+            # Instead of exiting, return default values
+            return 10, [], []  # Default values for settings, all_users, message_history
 
     def _handle_send_message(self, recipient, message):
         """Sends the server a message request and handles potential failures to deliver the message."""
@@ -171,8 +270,8 @@ class Client:
                 message=message,
                 timestamp=str(datetime.now())
             )
-            response = self.stub.SendMessage(message_request)
-
+            # response = self.stub.SendMessage(message_request)
+            response = self.get_writable_server("SendMessage", message_request)
             if response.status == service_pb2.MessageResponse.MessageStatus.SUCCESS:
                 logger.info(f"Message sent to {recipient} successfully")
             else:
@@ -190,7 +289,8 @@ class Client:
         """
         try:
             logger.info(f"Starting message monitoring...")
-            message_iterator = self.stub.MonitorMessages(service_pb2.MonitorMessagesRequest(username=self.current_user))
+            # message_iterator = self.stub.MonitorMessages(service_pb2.MonitorMessagesRequest(username=self.current_user))
+            message_iterator = self.get_writable_server("MonitorMessages", service_pb2.MonitorMessagesRequest(username=self.current_user))
             while True:
                 for message in message_iterator:
                     self.chat_ui.display_message(from_user=message.sender, message=message.message)
@@ -207,11 +307,12 @@ class Client:
         """
         try:
             logger.info("Send request to get pending messages and update inbox.")
-            settings_response = self.stub.GetSettings(service_pb2.GetSettingsRequest(username=self.current_user))
+            # settings_response = self.stub.GetSettings(service_pb2.GetSettingsRequest(username=self.current_user))
+            settings_response = self.get_writable_server("GetSettings", service_pb2.GetSettingsRequest(username=self.current_user))
             settings = settings_response.setting
             
-            responses = self.stub.GetPendingMessage(service_pb2.PendingMessageRequest(username=self.current_user, inbox_limit=settings))
-
+            # responses = self.stub.GetPendingMessage(service_pb2.PendingMessageRequest(username=self.current_user, inbox_limit=settings))
+            responses = self.get_writable_server("GetPendingMessage", service_pb2.PendingMessageRequest(username=self.current_user, inbox_limit=settings))
             pending_messages = {}
             for response in responses:
                 # If there are no messages yet from this sender, create an empty list to add to.
@@ -234,12 +335,14 @@ class Client:
     def _handle_save_settings(self, settings):
         """Send a request to the server to update the user's settings."""
         logger.info(f"Sent request to update settings to have a limit of {settings}")
-        response = self.stub.SaveSettings(service_pb2.SaveSettingsRequest(username=self.current_user, setting=settings))
+        # response = self.stub.SaveSettings(service_pb2.SaveSettingsRequest(username=self.current_user, setting=settings))
+        response = self.get_writable_server("SaveSettings", service_pb2.SaveSettingsRequest(username=self.current_user, setting=settings))
 
     def _handle_delete_account(self):
         """Send a request to the server to delete the user's account."""
         logger.info("Sending a request to delete account.")
-        response = self.stub.DeleteAccount(service_pb2.DeleteAccountRequest(username=self.current_user))
+        # response = self.stub.DeleteAccount(service_pb2.DeleteAccountRequest(username=self.current_user))
+        response = self.get_writable_server("DeleteAccount", service_pb2.DeleteAccountRequest(username=self.current_user))
         if response.status == service_pb2.DeleteAccountResponse.DeleteAccountStatus.SUCCESS:
             self.root.destroy()
         else:
