@@ -1,20 +1,16 @@
 import sys
 import os
 import grpc
-import uuid
-from datetime import datetime
 import argparse
 import logging
 import socket # For retrieving local IP address only
-from collections import defaultdict
 from concurrent import futures
 # Handle our file paths properly.
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from proto import service_pb2
 from proto import service_pb2_grpc
-from AuthHandler import AuthHandler
-from DatabaseManager import DatabaseManager
 from MessageServer import MessageServer
+
 
 # MARK: Initialize Logger
 # Configure logging set-up. We want to log times & types of logs, as well as
@@ -28,24 +24,10 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # MARK: Server Initialization
-
 def serve(ip, port, ip_connect=None, port_connect=None):
+    # Create our connection and launch the MessageServer.
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
     service_pb2_grpc.add_MessageServerServicer_to_server(MessageServer(ip, port, ip_connect, port_connect), server)
-    
-    # if role == "master":
-    #     print("execute master")
-    #     service_pb2_grpc.add_MessageServerServicer_to_server(MessageServer(), server)
-    # else:
-    #     print("execute replica")
-    #     primary_server_channel = grpc.insecure_channel('127.0.0.1:5001')
-    #     primary_server_stub = service_pb2_grpc.MessageServerStub(primary_server_channel)
-    #     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
-    #     service_pb2_grpc.add_MessageServerServicer_to_server(ReplicaServer(ip, port, primary_server_stub), server)
-    
-    
-
-    
     server.add_insecure_port(f'{ip}:{port}')
     server.start()
     logger.info(f"Server started on port {port} for ip {ip}")
@@ -53,11 +35,10 @@ def serve(ip, port, ip_connect=None, port_connect=None):
 
 
 # MARK: Command-line arguments.
-
-# Validate an IP address
 def validate_ip(value):
+    """Validate an IP address"""
     try:
-        # Try to convert the value to a valid IP address using socket
+        # Try to convert the value to a valid IP address using socket library
         socket.inet_aton(value)  # This will raise an error if not a valid IPv4 address
         return value
     except socket.error:
@@ -106,8 +87,6 @@ if __name__ == "__main__":
     port = args.port
     ip_connect = args.ip_connect
     port_connect = args.port_connect
-
-    port_connect = str(port_connect) if port_connect else None
 
     # Start our server
     serve(ip, str(port), ip_connect, port_connect)
