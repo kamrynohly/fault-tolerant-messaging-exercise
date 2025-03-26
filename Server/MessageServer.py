@@ -35,21 +35,39 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
     client conversations and allow clients to request services.
     """
         
-    def __init__(self):
+    def __init__(self, ip, port, ip_connect=None, port_connect=None):
         # Set up the users table, messages table, and servers tables.
         DatabaseManager.setup_databases()
 
+        self.ip = str(ip)
+        self.port = str(port)
+        self.server_id = str(uuid.uuid4())
         self.active_clients = {}
         self.message_queue = defaultdict(list)
-
-        self.server_id = str(uuid.uuid4())
         logger.info(f"Server created with UUID: {self.server_id}")
-        self.leader = None # Do not immediately declare self as leader, otherwise could accidentally have two.
-        self.servers = {}  # Dictionary to store replica servers (key: server_id, value: {"ip": ip, "port": port, "heartbeat": last timestamp})
 
+        self.servers = {}  
         self.heartbeatThread = threading.Thread(target=self._heartbeat, daemon=True)
+        self.leader = defaultdict(dict)
 
-        self.setup_replicas() # Handle declaring self as leader and checking initial status of replicas
+
+        print("IP CONNECT", ip_connect)
+        print("PORT CONNECT", port_connect)
+        # If we are the leader:
+        if not ip_connect and not port_connect:
+            print("WE ARE THE LEADER")
+            channel = grpc.insecure_channel(f'{ip}:{port}')
+            stub = service_pb2_grpc.MessageServerStub(channel)
+            self.leader["stub"] = stub
+            self.leader["id"] = self.server_id
+            self.leader["ip"] = ip
+            self.leader["port"] = port
+            self.heartbeatThread.start()
+
+        # If we are not the leader:
+        else:
+            print("WE ARE NOT THE LEADER")
+            self.setup(ip_connect, port_connect)
 
 
     # MARK: User Authentication
@@ -438,12 +456,45 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
             )
     
     # MARK: Fault Tolerance
+    def elect_leader(self):
+        # TODO: Implement leader election
+        # logger.info("Electing leader")
+        # primary_server_channel = grpc.insecure_channel('127.0.0.1:5001')
+        # primary_server_stub = service_pb2_grpc.MessageServerStub(primary_server_channel)
+        # self.leader = self.server_id
+        # return primary_server_stub
+        pass
 
-    def setup_replicas(self):
-        # First, this will act as the leader by default.
-        # If this is the first server to launch, then things are fairly simple, but
-        # we have to consider the case that the server has crashed and is rebooting.
+
+    def setup(self, ip_connect, port_connect):
+        # Connect to another server
+        initial_channel = grpc.insecure_channel(f'{ip_connect}:{port_connect}')  # Replace with actual second server address
+        initial_stub = service_pb2_grpc.MessageServerStub(initial_channel)
+        leader_info_response = initial_stub.NewReplica(service_pb2.NewReplicaRequest(new_replica_id=self.server_id, ip_addr=self.ip, port=self.port))
+
+        # Connecting to the leader
+        leader_channel = grpc.insecure_channel(f'{leader_info_response.ip}:{leader_info_response.port}')
+        leader_stub = service_pb2_grpc.MessageServerStub(leader_channel)
+        self.leader["stub"] = leader_stub
+        self.leader["id"] = leader_info_response.id
+        self.leader["ip"] = leader_info_response.ip
+        self.leader["port"] = leader_info_response.port
+        
+        print("Leader is currently", self.leader)
+
+        # Now, get info for the rest of the servers from the leader!
+        servers = self.leader["stub"].GetServers(service_pb2.GetServersRequest(requestor_id=self.server_id))
+        
+        for server in servers:
+            if not server.id == self.server_id:
+
+                server_channel = grpc.insecure_channel(f'{server.ip}:{server.port}')
+                server_stub = service_pb2_grpc.MessageServerStub(server_channel)
+                self.servers[server.id] = {"heartbeat": datetime.now(), "stub": server_stub}
+        
+        # self.servers[self.leader] = {"ip": response.ip, "port": response.port, "heartbeat": datetime.now()}
         self.heartbeatThread.start()
+
 
     def NewReplica(self, request, context):
         # A new server will call this function first to inform the leader that they now exist.
@@ -451,25 +502,27 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
         #       1: Update this server in SQL db
         #       2: Add this server to list of current servers
         DatabaseManager.add_server(request.new_replica_id, request.ip_addr, request.port)
-        self.servers[request.new_replica_id] = {"ip": request.ip_addr, "port": request.port, "heartbeat": datetime.now()}
+        
+        channel = grpc.insecure_channel(f'{request.ip_addr}:{request.port}')
+        stub = service_pb2_grpc.MessageServerStub(channel)
+        self.servers[request.new_replica_id] = {"stub": stub, "heartbeat": datetime.now()}
 
         # FORWARD REQUEST TO ALL SERVERS
-        for id in self.servers:
-            if not request.new_replica_id == id:
-                try:
-                    server_channel = grpc.insecure_channel(f'{self.servers[id]["ip"]}:{self.servers[id]["port"]}')  # Replace with actual second server address
-                    stub = service_pb2_grpc.MessageServerStub(server_channel)
-                    stub.NewReplica(request) # Send same request to all servers
-                except Exception as e:
-                    print("Encountered problem forwarding new replica request to all servers", e)
+        if self.leader["id"] == self.server_id:
+            for id in self.servers:
+                if not request.new_replica_id == id:
+                    try:
+                        self.servers[id]["stub"].NewReplica(request) # Send same request to all servers
+                    except Exception as e:
+                        print("Encountered problem forwarding new replica request to all servers", e)
 
-        # TODO: DONT HARDCODE!!!
-        return service_pb2.LeaderResponse(id=self.server_id, ip="127.0.0.1", port="5001")
+
+        return service_pb2.LeaderResponse(id=self.leader["id"], ip=self.leader["ip"], port=self.leader["port"])
 
     def Heartbeat(self, request, context):
         requestor_id = request.requestor_id
         server_id = request.server_id
-        print(f"Heartbeat requested from server: {requestor_id} reaching out to server: {server_id}")
+        logger.info(f"Heartbeat requested from server: {requestor_id} reaching out to server: {server_id}")
         self.update_heartbeat(requestor_id)
         return service_pb2.HeartbeatResponse(status="Heartbeat received")
 
@@ -501,8 +554,21 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
             DatabaseManager.remove_server(server_id)
 
     def _heartbeat(self):
-        self.check_and_remove_failed_replicas()
-        threading.Timer(5, self._heartbeat).start()  # Schedule the next heartbeat in 2 seconds
+        if self.leader["stub"] == self.server_id:
+            self.check_and_remove_failed_replicas()
+            threading.Timer(5, self._heartbeat).start()  # Schedule the next heartbeat in 2 seconds
+        else:
+            for id in self.servers:
+                # Create the stub for each server
+                try:
+                    server_channel = grpc.insecure_channel(f'{self.servers[id]["ip"]}:{self.servers[id]["port"]}')  # Replace with actual second server address
+                    stub = service_pb2_grpc.MessageServerStub(server_channel)
+                    response = stub.Heartbeat(service_pb2.HeartbeatRequest(requestor_id=self.server_id, server_id=id))
+                    self.update_heartbeat(id)
+                except Exception as e:
+                    logger.error(f"Unable to reach server in _heartbeat with error {e}")
+            self.check_and_remove_failed_replicas()
+            threading.Timer(2, self._heartbeat).start()
 
     def GetServers(self, request, context):
         servers = DatabaseManager.get_servers()
