@@ -61,6 +61,7 @@ class Client:
                             case "GetUsers":
                                 iterator = stub.GetUsers(request)
                             case "GetMessageHistory":
+
                                 iterator = stub.GetMessageHistory(request)
                             case "GetPendingMessage":
                                 iterator = stub.GetPendingMessage(request)
@@ -290,10 +291,18 @@ class Client:
         try:
             logger.info(f"Starting message monitoring...")
             # message_iterator = self.stub.MonitorMessages(service_pb2.MonitorMessagesRequest(username=self.current_user))
-            message_iterator = self.get_writable_server("MonitorMessages", service_pb2.MonitorMessagesRequest(username=self.current_user))
-            while True:
-                for message in message_iterator:
-                    self.chat_ui.display_message(from_user=message.sender, message=message.message)
+            for server in SERVERS:
+                try:
+                    channel = grpc.insecure_channel(f'{server["ip"]}:{server["port"]}')
+                    stub = service_pb2_grpc.MessageServerStub(channel)
+                    message_iterator = stub.MonitorMessages(service_pb2.MonitorMessagesRequest(username=self.current_user))
+                    while True:
+                        print("about to iterate")
+                        for message in message_iterator:
+                            self.chat_ui.display_message(from_user=message.sender, message=message.message)
+                except Exception as e:
+                    logger.error(f"Failed to establish monitoring connection: {e}")
+                    continue
 
         except Exception as e:
             logger.error(f"Failed with error in monitor messages: {e}")
