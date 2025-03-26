@@ -32,20 +32,29 @@ DIY-WIRE-PROTOCOL/
    python -m grpc_tools.protoc -I./proto --python_out=. --grpc_python_out=. ./proto/service.proto
    ```
 
-3. Start the server:
+3. Start the leader server:
    ```bash
    python Server/main.py --ip your_ip --port 5001
    ```
 
-4. In a separate terminal, start the client:
+4. Start any number of follower servers:
+   ```bash
+   python Server/main.py --ip your_ip --port 5002 --port_connect [any port number in the system] --ip_connect [any ip address in the system]
+   ```
+
+5. In a separate terminal, start the client:
    ```bash
    python Client/main.py --ip server_ip --port 5001
    ```
+   You can use any server_ip and port number here, as the client will cycle through known servers from `client_config.py` to find a connection.
 
-5. Run the tests:
+
+6. Run the tests:
    ```bash
    pytest Client/test_client.py
    pytest Server/test_server.py
+   python test_fault_tolerance.py
+   python test_replication.py
    ```
 
 
