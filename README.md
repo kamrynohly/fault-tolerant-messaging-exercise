@@ -54,8 +54,6 @@ FAULT-TOLERANT-MESSAGING-EXERCISE/
    ```bash
    pytest Client/test_client.py
    pytest Server/test_server.py
-   python test_fault_tolerance.py
-   python test_replication.py
    ```
 
 
