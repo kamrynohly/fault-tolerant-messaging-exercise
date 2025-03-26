@@ -15,7 +15,6 @@ from proto import service_pb2_grpc
 from AuthHandler import AuthHandler
 from DatabaseManager import DatabaseManager
 from MessageServer import MessageServer
-from ReplicaServer import ReplicaServer
 
 # MARK: Initialize Logger
 # Configure logging set-up. We want to log times & types of logs, as well as
