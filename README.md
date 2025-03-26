@@ -1,20 +1,21 @@
 # DIY Wire Protocol Chat Application
-## Assignment 2 Updates:
+## Assignment 4 Updates:
 ### Updated Directory Structure
 ```
-DIY-WIRE-PROTOCOL/
+FAULT-TOLERANT-MESSAGING-EXERCISE/
 ├── Client/
 │   ├── UI/
 │   │   ├── chat.py
 │   │   └── signup.py
 │   ├── main.py
+|   ├── client_config.py
 │   └── test_client.py
 ├── Server/
-│   ├── auth_handler.py
-│   ├── database.py
+│   ├── AuthHandler.py
+│   ├── DatabaseManager.py
 │   ├── main.py
-│   ├── test_server.py
-│   └── service_actions.py
+|   ├── MessageServer.py
+│   └── test_server.py
 ├── proto/
 │   ├── service.proto
 │   ├── service_pb2.py
@@ -63,7 +64,6 @@ DIY-WIRE-PROTOCOL/
 - **Service Definition**: Defined in `proto/service.proto` using the Protocol Buffers IDL
 - **Generated Code**: The protocol compiler generates client and server code in `service_pb2.py` and `service_pb2_grpc.py`
 - **RPC Methods**: Supports both unary calls (request-response) and streaming for real-time messaging
-- **Message Types**: Strongly typed message definitions for all operations (login, registration, messaging, etc.)
 
 Key gRPC services include:
 - `Register`: User registration with email validation
@@ -74,7 +74,7 @@ Key gRPC services include:
 - `MonitorMessages`: Real-time message monitoring via server streaming
 - `DeleteAccount`: Account management
 - `SaveSettings` and `GetSettings`: User preference management
-
+- `NewReplica`, `Heartbeat`, and `GetServers`: Replica management
 ---
 
 # Assignment 1 Submission
