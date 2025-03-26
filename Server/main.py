@@ -15,6 +15,7 @@ from proto import service_pb2_grpc
 from AuthHandler import AuthHandler
 from DatabaseManager import DatabaseManager
 from MessageServer import MessageServer
+from ReplicaServer import ReplicaServer
 
 # MARK: Initialize Logger
 # Configure logging set-up. We want to log times & types of logs, as well as
@@ -29,9 +30,23 @@ logger = logging.getLogger(__name__)
 
 # MARK: Server Initialization
 
-def serve(ip, port):
+def serve(ip, port, ip_connect=None, port_connect=None):
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
-    service_pb2_grpc.add_MessageServerServicer_to_server(MessageServer(), server)
+    service_pb2_grpc.add_MessageServerServicer_to_server(MessageServer(ip, port, ip_connect, port_connect), server)
+    
+    # if role == "master":
+    #     print("execute master")
+    #     service_pb2_grpc.add_MessageServerServicer_to_server(MessageServer(), server)
+    # else:
+    #     print("execute replica")
+    #     primary_server_channel = grpc.insecure_channel('127.0.0.1:5001')
+    #     primary_server_stub = service_pb2_grpc.MessageServerStub(primary_server_channel)
+    #     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
+    #     service_pb2_grpc.add_MessageServerServicer_to_server(ReplicaServer(ip, port, primary_server_stub), server)
+    
+    
+
+    
     server.add_insecure_port(f'{ip}:{port}')
     server.start()
     logger.info(f"Server started on port {port} for ip {ip}")
@@ -68,6 +83,20 @@ def parse_arguments():
         help='Server port (default: 5001)'
     )
 
+    parser.add_argument(
+        '--port_connect',
+        type=int,
+        default=None,
+        help='Server port to connect to'
+    )
+
+    parser.add_argument(
+        '--ip_connect',
+        type=validate_ip,
+        default=None,
+        help='Server IP to connect to'
+    )
+
     return parser.parse_args()
 
 # MARK: MAIN
@@ -76,5 +105,10 @@ if __name__ == "__main__":
     args = parse_arguments()
     ip = args.ip
     port = args.port
+    ip_connect = args.ip_connect
+    port_connect = args.port_connect
+
+    port_connect = str(port_connect) if port_connect else None
+
     # Start our server
-    serve(ip, port)
+    serve(ip, str(port), ip_connect, port_connect)
