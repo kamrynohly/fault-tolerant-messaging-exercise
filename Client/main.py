@@ -514,7 +514,7 @@ class Client:
         """Send a request to the server to delete the user's account."""
         logger.info("Sending a request to delete account.")
         self.check_servers()
-        response = self.stub.DeleteAccount(service_pb2.DeleteAccountRequest(username=self.current_user, source="Client"))
+        response = self.current_stub.DeleteAccount(service_pb2.DeleteAccountRequest(username=self.current_user, source="Client"))
         # response = self.get_writable_server("DeleteAccount", service_pb2.DeleteAccountRequest(username=self.current_user, source="Client"))
         if response.status == service_pb2.DeleteAccountResponse.DeleteAccountStatus.SUCCESS:
             self.root.destroy()
