@@ -260,6 +260,13 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
             pending_messages = self.db_manager.get_pending_messages(request.username)
             logger.info(f"Messages pending for {request.username}: {pending_messages}")
 
+            # If we are the leader, propagate the request to all replicas to maintain consistency.
+            if request.source == "Client" and self.leader["id"] == self.server_id:
+                logger.info("Propagating GetPendingMessage request from leader to replicas.")
+                new_request = service_pb2.GetPendingMessage(username=request.username, inbox_limit=request.inbox_limit, source="Leader")
+                for id in self.servers:
+                    self.servers[id]["stub"].GetPendingMessage(new_request)
+
             while len(pending_messages) > 0 and counter < request.inbox_limit:
                 counter += 1
                 pending_message = pending_messages.pop(0)
@@ -273,13 +280,6 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
                     status=service_pb2.PendingMessageResponse.PendingMessageStatus.SUCCESS,
                     message=serialized_message
                 )
-            
-            # If we are the leader, propagate the request to all replicas to maintain consistency.
-            if request.source == "Client" and self.leader["id"] == self.server_id:
-                logger.info("Propagating GetPendingMessage request from leader to replicas.")
-                new_request = service_pb2.GetPendingMessage(username=request.username, inbox_limit=request.inbox_limit, source="Leader")
-                for id in self.servers:
-                    self.servers[id]["stub"].GetPendingMessage(new_request)
 
         except Exception as e:
             logger.error(f"Failed to stream pending messages to {request.username} with error: {e}")
@@ -312,6 +312,7 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
             # Messages are already ordered by timestamp for conversations. 
             # Serialize the messages and yield them individually to the stream.
             messages = self.db_manager.get_messages(request.username)
+            print("HERE:", messages)
             for message in messages:
                 serialized_message = service_pb2.Message(sender=message["sender"], 
                                                 recipient=message["recipient"], 
@@ -699,7 +700,7 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
                 - status (str): A description of the state
         """
         try:
-            logger.info(f"Heartbeat requested from server: {request.requestor_id} reaching out to server: {request.server_id}")
+            # logger.info(f"Heartbeat requested from server: {request.requestor_id} reaching out to server: {request.server_id}")
             if request.requestor_id == "Client":
                 # This is just the client checking in to ensure this server is still alive.
                 return service_pb2.HeartbeatResponse(status="Heartbeat received")
@@ -715,7 +716,7 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
 
     def update_heartbeat(self, id):
         """Update heartbeat timestamp for the server"""
-        logger.info(f"Heartbeat from {id} updated at {self.servers[id]}")
+        # logger.info(f"Heartbeat from {id} updated at {self.servers[id]}")
         self.servers[id]["heartbeat"] = datetime.now()
 
     def _heartbeat(self):
@@ -738,7 +739,7 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
 
     def check_and_remove_failed_replicas(self):
         """Handle failed servers."""
-        logger.info(f"Checking heartbeats and removing failed servers. Current heartbeats: {self.servers}")
+        # logger.info(f"Checking heartbeats and removing failed servers. Current heartbeats: {self.servers}")
 
         current_time = datetime.now()
         failed_replicas = []
