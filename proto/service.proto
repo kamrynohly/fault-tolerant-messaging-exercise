@@ -68,6 +68,7 @@ message RegisterRequest {
     string username = 1;
     string password = 2;
     string email = 3;
+    string source = 4;
 }
 
 // NOTE: do we want this to have anything besides a success or failure?
@@ -84,6 +85,7 @@ message RegisterResponse {
 message LoginRequest {
     string username = 1;
     string password = 2;
+    string source = 3;
 }
 
 // NOTE: do we want this to have anything besides a success or failure?
@@ -120,10 +122,12 @@ message Message {
     string recipient = 2;
     string message = 3;
     string timestamp = 4;
+    string source = 5;
 }
 
 message MonitorMessagesRequest {
     string username = 1;
+    string source = 2;
 }
 
 message MessageResponse {
@@ -137,6 +141,7 @@ message MessageResponse {
 message PendingMessageRequest {
     string username = 1;
     int32 inbox_limit = 2;
+    string source = 3;
 }
 
 message PendingMessageResponse {
@@ -150,6 +155,7 @@ message PendingMessageResponse {
 
 message DeleteAccountRequest {
     string username = 1;
+    string source = 2;
 }
 
 message DeleteAccountResponse {
@@ -163,6 +169,7 @@ message DeleteAccountResponse {
 message SaveSettingsRequest {
     string username = 1;
     int32 setting = 2;
+    string source = 3;
 }
 
 message SaveSettingsResponse {
