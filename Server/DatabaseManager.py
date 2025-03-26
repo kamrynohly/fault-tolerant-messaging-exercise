@@ -1,6 +1,10 @@
 import sqlite3
 
 class DatabaseManager:
+    """
+    The DatabaseManager class contains helpful functionalities to manage the database of users
+    and creation and updating of messages.
+    """
     def __init__(self, ip, port):
         self.db_name = f"{ip}_{port}.db"
         
@@ -29,18 +33,8 @@ class DatabaseManager:
                     isPending BOOL NOT NULL
                 )
             ''')
-            # Create a table to store information about leaders and replicas
-            # cursor.execute('''
-            #     CREATE TABLE IF NOT EXISTS servers (
-            #         server_id TEXT NOT NULL,
-            #         ip TEXT NOT NULL,
-            #         port TEXT NOT NULL,
-            #         isLeader BOOL DEFAULT FALSE
-            #     )
-            # ''')
-            # conn.commit()
 
-    # MARK: User-Related
+    # MARK: User Functionalities
     def get_contacts(self):
         """Register a new user."""
         try:
@@ -112,10 +106,9 @@ class DatabaseManager:
             print(f"Unexpected error: {str(e)}")
             return False
 
-    # MARK: Messages Table
-
-    # Persistent Messages
+    # MARK: Persistent Messages 
     def save_message(self, sender, recipient, message, timestamp, isPending):
+        """Store a message in the table with appropriate values. Denote if the message is currently pending delivery."""
         try:
             with sqlite3.connect(self.db_name) as conn:
                 cursor = conn.cursor()

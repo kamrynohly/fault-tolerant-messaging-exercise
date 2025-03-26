@@ -5,7 +5,7 @@ from datetime import datetime
 class AuthHandler:
     """
     The AuthHandler class contains helpful functionalities to manage the authentication
-    of new and existing users. It also manages the `users.db` permanent storage.
+    of new and existing users.
     """
     def __init__(self, ip, port):
         self.db_name = f"{ip}_{port}.db"
