@@ -1,4 +1,3 @@
-
 import sys, os
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
@@ -37,6 +36,13 @@ class DummyAuthHandler:
         return (True, "Registration successful")
     def authenticate_user(self, username, password):
         return (True, "Login successful")
+
+class DummyFailAuthHandler:
+    """A dummy authentication handler that always returns failure."""
+    def register_user(self, username, password, email):
+        return (False, "Registration failed")
+    def authenticate_user(self, username, password):
+        return (False, "Login failed")
 
 
 # --- Test Suite --- #
@@ -82,6 +88,19 @@ class TestMessageServer(unittest.TestCase):
         self.assertEqual(response.status, service_pb2.LoginResponse.LoginStatus.SUCCESS)
         self.assertEqual(response.message, "Login successful")
 
+    def test_login_failure(self):
+        # Switch to a dummy auth handler that fails.
+        self.server.auth_manager = DummyFailAuthHandler()
+        request = SimpleNamespace(
+            username="user_fail",
+            password="pass_fail",
+            source="Client"
+        )
+        context = DummyContext()
+        response = self.server.Login(request, context)
+        self.assertNotEqual(response.status, service_pb2.LoginResponse.LoginStatus.SUCCESS)
+        self.assertEqual(response.message, "Login failed")
+
     def test_get_users(self):
         # Insert a dummy user into the users table.
         with sqlite3.connect(self.server.db_manager.db_name) as conn:
@@ -97,7 +116,31 @@ class TestMessageServer(unittest.TestCase):
         usernames = [resp.username for resp in responses if resp.username]
         self.assertIn("user1", usernames)
 
-    
+   
+    def test_get_message_history(self):
+        # Insert delivered (non-pending) messages for user2.
+        timestamp = int(datetime.now().timestamp())
+        with sqlite3.connect(self.server.db_manager.db_name) as conn:
+            cursor = conn.cursor()
+            messages = [
+                ("user1", "user2", "Delivered 1", timestamp, False),
+                ("user2", "user1", "Delivered 2", timestamp + 1, False)
+            ]
+            cursor.executemany(
+                "INSERT INTO messages (sender, recipient, message, timestamp, isPending) VALUES (?, ?, ?, ?, ?)",
+                messages
+            )
+            conn.commit()
+        request = SimpleNamespace(username="user2")
+        context = DummyContext()
+        history = list(self.server.GetMessageHistory(request, context))
+        # Verify that at least one delivered message is returned.
+        self.assertGreater(len(history), 0)
+        # Check that each returned message is not pending.
+        for msg in history:
+            # Since the proto Message doesn't include isPending, we assume if it's returned, it is delivered.
+            self.assertNotEqual(msg.message, "")  # simple check that message is non-empty
+
 
     def test_send_message_active(self):
         # Simulate an active client for recipient "user2".
@@ -187,7 +230,6 @@ class TestMessageServer(unittest.TestCase):
         # Verify the updated settings.
         response_get2 = self.server.GetSettings(request_get, context)
         self.assertEqual(response_get2.setting, 100)
-
 
     def test_new_replica(self):
         request = SimpleNamespace(
