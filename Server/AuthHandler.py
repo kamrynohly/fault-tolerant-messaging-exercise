@@ -7,19 +7,20 @@ class AuthHandler:
     The AuthHandler class contains helpful functionalities to manage the authentication
     of new and existing users. It also manages the `users.db` permanent storage.
     """
+    def __init__(self, ip, port):
+        self.db_name = f"{ip}_{port}.db"
 
     @staticmethod
     def hash_password(password):
         """Hash password using SHA-256."""
         return hashlib.sha256(password.encode()).hexdigest()
     
-    @staticmethod
-    def register_user(username, password, email):
+    def register_user(self, username, password, email):
         """Register a new user."""
         try:
-            with sqlite3.connect('users.db') as conn:
+            with sqlite3.connect(self.db_name) as conn:
                 cursor = conn.cursor()
-                password_hash = AuthHandler.hash_password(password)
+                password_hash = self.hash_password(password)
                 cursor.execute(
                     'INSERT INTO users (username, password_hash, email) VALUES (?, ?, ?)',
                     (username, password_hash, email)
@@ -31,16 +32,15 @@ class AuthHandler:
         except Exception as e:
             return False, f"Registration failed with error {str(e)}"
 
-    @staticmethod
-    def authenticate_user(username, password):
+    def authenticate_user(self, username, password):
         """Authenticate user login."""
         try:
-            with sqlite3.connect('users.db') as conn:
+            with sqlite3.connect(self.db_name) as conn:
                 cursor = conn.cursor()
                 cursor.execute('SELECT password_hash FROM users WHERE username = ?', (username,))
                 result = cursor.fetchone()
                 
-                if result and result[0] == AuthHandler.hash_password(password):
+                if result and result[0] == self.hash_password(password):
                     cursor.execute(
                         'UPDATE users SET last_login = ? WHERE username = ?',
                         (datetime.now(), username)

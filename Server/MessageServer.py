@@ -37,7 +37,9 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
         
     def __init__(self, ip, port, ip_connect=None, port_connect=None):
         # Set up the users table, messages table, and servers tables.
-        DatabaseManager.setup_databases()
+        self.db_manager = DatabaseManager(ip, port)
+        self.auth_manager = AuthHandler(ip, port)
+        self.db_manager.setup_databases(ip, port)
 
         self.ip = str(ip)
         self.port = str(port)
@@ -70,7 +72,7 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
 
 
     # MARK: User Authentication
-    def Register(self, request : service_pb2.RegisterRequest, context) -> service_pb2.RegisterResponse:
+    def Register(self, request : service_pb2.RegisterRequest, context):
         """
         Registers a new user via an RPC request.
 
@@ -91,10 +93,24 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
             style as the failure of a registration. It will contain the error message instead.
         """
         try:
+            if request.source == "Client" and self.leader["id"] != self.server_id:
+                # Forward request
+                # TODO CHECK CHECK CHECK
+                print("FORWARD REGISTER TO LEADER!!!")
+                response = self.leader["stub"].Register(request)
+                return response
+        
             logger.info(f"Handling register request from {request.username}")
             # Set up databases if not completed already
-            status, message = AuthHandler.register_user(request.username, request.password, request.email)
+            status, message = self.auth_manager.register_user(request.username, request.password, request.email)
             
+            if request.source == "Client" and self.leader["id"] == self.server_id:
+                print("SEND REGISTER BACK TO SERVERS")
+                # Send to other databases
+                new_request = service_pb2.RegisterRequest(username=request.username, password=request.password, email=request.email, source="Leader")
+                for id in self.servers:
+                    self.servers[id]["stub"].Register(new_request)
+
             if status:
                 logger.info(f"Successfully registered username {request.username}")
                 status_message = service_pb2.RegisterResponse.RegisterStatus.SUCCESS
@@ -133,9 +149,23 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
             If an error occurs during login, a failure response is returned to the client with the specific error message.
         """
         try:
+            if request.source == "Client" and self.leader["id"] != self.server_id:
+                # Forward request
+                print("FORWARD LOGIN TO LEADER!!!")
+                response = self.leader["stub"].Login(request)
+                return response
+
             logger.info(f"Handling login request from {request.username}")
-            response, message = AuthHandler.authenticate_user(request.username, request.password)
+            response, message = self.auth_manager.authenticate_user(request.username, request.password)
             
+            # If the leader is handling this, forward it to all of the replicas.
+            if request.source == "Client" and self.leader["id"] == self.server_id:
+                print("SEND LOGIN BACK TO SERVERS")
+                # Send to other databases
+                new_request = service_pb2.LoginRequest(username=request.username, password=request.password, source="Leader")
+                for id in self.servers:
+                    self.servers[id]["stub"].Login(new_request)
+
             if response:
                 logger.info(f"Successfully logged in user with username {request.username}")
                 status_message = service_pb2.LoginResponse.LoginStatus.SUCCESS
@@ -176,7 +206,7 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
         """
         try:
             logger.info(f"Handling get_users request from {request.username}")
-            users = DatabaseManager.get_contacts()
+            users = self.db_manager.get_contacts()
             logger.info(f"Retrieved users from database to send to client via a stream: {users}")
             for user in users:
                 yield service_pb2.GetUsersResponse(
@@ -209,18 +239,24 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
             If an error occurs while retrieving or streaming pending messages, a failure response is sent to the client with an error message.
         """
         try:
+            if request.source == "Client" and self.leader["id"] != self.server_id:
+                # Forward request
+                print("FORWARD GET PENDING MESSAGES TO LEADER!!!")
+                response = self.leader["stub"].GetPendingMessage(request)
+                return response
+            
             logger.info(f"Handling request from {request.username} to retrieve pending messages.")
 
             # Only send the number of messages that the user desires.
             counter = 0
-            pending_messages = DatabaseManager.get_pending_messages(request.username)
+            pending_messages = self.db_manager.get_pending_messages(request.username)
             logger.info(f"Messages pending for {request.username}: {pending_messages}")
 
             while len(pending_messages) > 0 and counter < request.inbox_limit:
                 counter += 1
                 pending_message = pending_messages.pop(0)
                 # Update persistent storage status of message
-                DatabaseManager.pending_message_sent(pending_message["id"])
+                self.db_manager.pending_message_sent(pending_message["id"])
                 serialized_message = service_pb2.Message(sender=pending_message["sender"], 
                                                 recipient=pending_message["recipient"], 
                                                 message=pending_message["message"], 
@@ -229,6 +265,15 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
                     status=service_pb2.PendingMessageResponse.PendingMessageStatus.SUCCESS,
                     message=serialized_message
                 )
+            
+            # If the leader is handling this, forward it to all of the replicas.
+            if request.source == "Client" and self.leader["id"] == self.server_id:
+                print("SEND GET PENDING MESSAGES BACK TO SERVERS")
+                # Send to other databases
+                new_request = service_pb2.GetPendingMessage(username=request.username, inbox_limit=request.inbox_limit, source="Leader")
+                for id in self.servers:
+                    self.servers[id]["stub"].GetPendingMessage(new_request)
+
         except Exception as e:
             logger.error(f"Failed to stream pending messages to {request.username} with error: {e}")
             error_message = service_pb2.Message(sender="error", 
@@ -243,7 +288,7 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
     def GetMessageHistory(self, request : service_pb2.MessageHistoryRequest, context):
         try:
             # Should already be ordered by timestamp
-            messages = DatabaseManager.get_messages(request.username)
+            messages = self.db_manager.get_messages(request.username)
             for message in messages:
                 serialized_message = service_pb2.Message(sender=message["sender"], 
                                                 recipient=message["recipient"], 
@@ -280,7 +325,14 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
             - If the recipient is inactive or unreachable, the message is added to the pending messages queue for later delivery when the recipient becomes active.
             - If an error occurs during the message sending process, a FAILURE message is sent to the client.
         """
+        print("IN SEND MESSAGE")
         try:
+            if request.source == "Client" and self.leader["id"] != self.server_id:
+                # Forward request
+                print("FORWARD Message TO LEADER!!!")
+                response = self.leader["stub"].SendMessage(request)
+                return response
+
             logger.info(f"Handling request to send a message from {request.sender} to {request.recipient} for message: {request.message}")
             message_request = service_pb2.Message(
                     sender=request.sender,
@@ -289,6 +341,16 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
                     timestamp=request.timestamp
                 )
             
+            print("ACTIVE USERS NUM", len(self.active_clients.keys()))
+
+            #  If the leader is handling this, forward it to all of the replicas.
+            if request.source == "Client" and self.leader["id"] == self.server_id:
+                print("SEND MESSAGES BACK TO SERVERS")
+                # Send to other databases
+                new_request = service_pb2.Message(sender=request.sender, recipient=request.recipient, message=request.message, timestamp=request.timestamp, source="Leader")
+                for id in self.servers:
+                    self.servers[id]["stub"].SendMessage(new_request)
+
             # If the other client is currently online, send the message instantly.
             if request.recipient in self.active_clients.keys():
                 logger.info(f"The recipient {request.recipient} is active, now confirming they have a valid streaming connection.")
@@ -302,20 +364,30 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
                     logger.info(f"Message from {request.sender} added to queue for streaming to {request.recipient}.")
                     self.message_queue[request.recipient].append(message_request)
                     # Save to persistent storage
-                    DatabaseManager.save_message(request.sender, request.recipient, request.message, request.timestamp, False)
+                    self.db_manager.save_message(request.sender, request.recipient, request.message, request.timestamp, False)
+                    
+                    #  If the leader is handling this, forward it to all of the replicas.
+                    # We do this twice so it doesn't get missed!
+                    # if request.source == "Client" and self.leader["id"] == self.server_id:
+                    #     print("SEND MESSAGES BACK TO SERVERS")
+                    #     # Send to other databases
+                    #     new_request = service_pb2.Message(sender=request.sender, recipient=request.recipient, message=request.message, timestamp=request.timestamp, source="Leader")
+                    #     for id in self.servers:
+                    #         self.servers[id]["stub"].SendMessage(new_request)
+
                     return service_pb2.MessageResponse(
                         status=service_pb2.MessageResponse.MessageStatus.SUCCESS
                     )
             
             # If the client is not active and reachable, add the message to the pending message in our database.
-            DatabaseManager.save_message(request.sender, request.recipient, request.message, request.timestamp, True)
+            self.db_manager.save_message(request.sender, request.recipient, request.message, request.timestamp, True)
             return service_pb2.MessageResponse(status=service_pb2.MessageResponse.MessageStatus.SUCCESS)
         
         except Exception as e:
             logger.error(f"Failed to send message from {request.sender} to {request.recipient} with error: {e}")
             return service_pb2.MessageResponse(status=service_pb2.MessageResponse.MessageStatus.FAILURE)
 
-    def MonitorMessages(self, request : service_pb2.MonitorMessagesRequest, context) -> service_pb2.Message:
+    def MonitorMessages(self, request : service_pb2.MonitorMessagesRequest, context):
         """
         Handles a client's RPC request to subscribe to updates about new messages.
         This service also handles adding and removing a client from the clients who are active and reachable.
@@ -331,6 +403,13 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
             Message: The message that is to be delivered from a different client to the client who called this service.
         """
         try:
+            print("MONITOR MESSAGES GOT CALLED!!!")
+            if request.source == "Client" and self.leader["id"] != self.server_id:
+                # Forward request
+                print("FORWARD monitor messages TO LEADER!!!")
+                response = self.leader["stub"].MonitorMessages(request)
+                return response
+
             logger.info(f"Handling client {request.username}'s request to monitor for messages.")
             
             # Check to ensure that this isn't creating a double connection.
@@ -344,7 +423,20 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
             client_stream = context
             self.active_clients[request.username] = client_stream
             
+            if request.source == "Client" and self.leader["id"] == self.server_id:
+                print("SEND Monitor Messages BACK TO SERVERS")
+                # Send to other databases
+                new_request = service_pb2.MonitorMessagesRequest(username=request.username, source="Leader")
+                for id in self.servers:
+                    self.servers[id]["stub"].MonitorMessages(new_request)
+
+            original_leader = self.leader["id"]
             while True:
+                # We should check if there have been updates to the leader.
+                # In that event, we want to shut down the stream, as it will be restarted.
+                if self.leader["id"] != original_leader:
+                    break
+
                 # If we have a message ready to send, verify our status and yield the message to the stream.
                 if len(self.message_queue[request.username]) > 0:
                     if context.is_active():
@@ -353,14 +445,15 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
                         yield message
                     else:
                         logger.warning(f"Connection concerns with client {request.username}.")
-        
+            
         except Exception as e:
             logger.error(f"Failed to send a message or lost connection to client with error {e}")
         
         finally:
             # When the client's stream closes, remove them from the active clients.
             logger.info(f"Client disconnected with username: {request.username}")
-            self.active_clients.pop(request.username)
+            if request.username in self.active_clients:
+                self.active_clients.pop(request.username)
 
     # MARK: Account Settings
     def DeleteAccount(self, request : service_pb2.DeleteAccountRequest, context) -> service_pb2.DeleteAccountResponse:
@@ -376,8 +469,22 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
             DeleteAccountResponse: Returns the status (DeleteAccountStatus) of SUCCESS or FAILURE.
         """
         try:
+            if request.source == "Client" and self.leader["id"] != self.server_id:
+                # Forward request
+                print("FORWARD delete account TO LEADER!!!")
+                response = self.leader["stub"].DeleteAccount(request)
+                return response
+    
             logger.info(f"Handling request to delete account with username {request.username}.")
-            status = DatabaseManager.delete_account(request.username)
+            status = self.db_manager.delete_account(request.username)
+
+            if request.source == "Client" and self.leader["id"] == self.server_id:
+                print("SEND delete account BACK TO SERVERS")
+                # Send to other databases
+                new_request = service_pb2.DeleteAccountRequest(username=request.username, source="Leader")
+                for id in self.servers:
+                    self.servers[id]["stub"].DeleteAccount(new_request)
+
             if status:
                 logger.info(f"Account successfully deleted for user {request.username}.")
                 return service_pb2.DeleteAccountResponse(
@@ -408,8 +515,22 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
             SaveSettingsResponse: Returns the status (SaveSettingsStatus) of SUCCESS or FAILURE of saving the new limit.
         """
         try:
+            if request.source == "Client" and self.leader["id"] != self.server_id:
+                # Forward request
+                print("FORWARD save settings TO LEADER!!!")
+                response = self.leader["stub"].SaveSettings(request)
+                return response
+
             logger.info(f"Handling save setting request from {request.username} to update setting to {request.setting}.")
-            status = DatabaseManager.save_settings(request.username, request.setting)
+            status = self.db_manager.save_settings(request.username, request.setting)
+            
+            if request.source == "Client" and self.leader["id"] == self.server_id:
+                print("SEND save settings BACK TO SERVERS")
+                # Send to other databases
+                new_request = service_pb2.SaveSettingsRequest(username=request.username, setting=request.setting, source="Leader")
+                for id in self.servers:
+                    self.servers[id]["stub"].SaveSettings(new_request)
+
             if status:
                 logger.info(f"Successfully updated user settings for user {request.username}.")
                 return service_pb2.SaveSettingsResponse(
@@ -442,7 +563,7 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
         """
         try: 
             logger.info(f"Retrieving settings for user {request.username}.")
-            settings = DatabaseManager.get_settings(request.username)
+            settings = self.db_manager.get_settings(request.username)
             return service_pb2.GetSettingsResponse(
                 status=service_pb2.GetSettingsResponse.GetSettingsStatus.SUCCESS,
                 setting=settings
@@ -521,6 +642,12 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
         return service_pb2.LeaderResponse(id=self.leader["id"], ip=self.leader["ip"], port=self.leader["port"])
 
     def Heartbeat(self, request, context):
+        if request.requestor_id == "Client":
+            # This is just the client checking in.
+            # Treat differently than other heartbeats
+            return service_pb2.HeartbeatResponse(status="Heartbeat received")
+        
+        # Manage heartbeats
         requestor_id = request.requestor_id
         server_id = request.server_id
         # logger.info(f"Heartbeat requested from server: {requestor_id} reaching out to server: {server_id}")
