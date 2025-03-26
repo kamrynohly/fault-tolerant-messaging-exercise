@@ -28,15 +28,15 @@ class DatabaseManager:
                 )
             ''')
             # Create a table to store information about leaders and replicas
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS servers (
-                    server_id TEXT NOT NULL,
-                    ip TEXT NOT NULL,
-                    port TEXT NOT NULL,
-                    isLeader BOOL DEFAULT FALSE
-                )
-            ''')
-            conn.commit()
+            # cursor.execute('''
+            #     CREATE TABLE IF NOT EXISTS servers (
+            #         server_id TEXT NOT NULL,
+            #         ip TEXT NOT NULL,
+            #         port TEXT NOT NULL,
+            #         isLeader BOOL DEFAULT FALSE
+            #     )
+            # ''')
+            # conn.commit()
 
     # MARK: User-Related
     @staticmethod
@@ -164,72 +164,72 @@ class DatabaseManager:
             return []
 
     # MARK: Server Table
-    def get_servers():
-        try:
-            with sqlite3.connect('users.db') as conn:
-                conn.row_factory = sqlite3.Row
-                cursor = conn.cursor()
-                cursor.execute('SELECT * FROM servers')
-                servers = cursor.fetchall()
-                return servers
-        except Exception as e:
-            print(f"Unexpected error getting servers: {str(e)}")
-            return []
+    # def get_servers():
+    #     try:
+    #         with sqlite3.connect('users.db') as conn:
+    #             conn.row_factory = sqlite3.Row
+    #             cursor = conn.cursor()
+    #             cursor.execute('SELECT * FROM servers')
+    #             servers = cursor.fetchall()
+    #             return servers
+    #     except Exception as e:
+    #         print(f"Unexpected error getting servers: {str(e)}")
+    #         return []
 
-    def check_leader():
-        try:
-            with sqlite3.connect('users.db') as conn:
-                cursor = conn.cursor()
-                cursor.execute('SELECT * FROM servers WHERE isLeader = True')
-                leader = cursor.fetchall()
-                print("LEADER IS ", leader)
-                if len(leader) == 0:
-                    return None
-                return leader[0]
-        except Exception as e:
-            print(f"Unexpected error getting leader: {str(e)}")
-            return None
+    # def check_leader():
+    #     try:
+    #         with sqlite3.connect('users.db') as conn:
+    #             cursor = conn.cursor()
+    #             cursor.execute('SELECT * FROM servers WHERE isLeader = True')
+    #             leader = cursor.fetchall()
+    #             print("LEADER IS ", leader)
+    #             if len(leader) == 0:
+    #                 return None
+    #             return leader[0]
+    #     except Exception as e:
+    #         print(f"Unexpected error getting leader: {str(e)}")
+    #         return None
 
-    def new_leader(server_id):
-        try:
-            with sqlite3.connect('users.db') as conn:
-                cursor = conn.cursor()
-                cursor.execute('UPDATE servers SET isLeader = ? WHERE server_id = ?', (True, server_id))
-                conn.commit()
-                return
-        except Exception as e:
-            print(f"Unexpected error updating leader: {str(e)}")
-            return 
+    # def new_leader(server_id):
+    #     try:
+    #         with sqlite3.connect('users.db') as conn:
+    #             cursor = conn.cursor()
+    #             cursor.execute('UPDATE servers SET isLeader = ? WHERE server_id = ?', (True, server_id))
+    #             conn.commit()
+    #             return
+    #     except Exception as e:
+    #         print(f"Unexpected error updating leader: {str(e)}")
+    #         return 
 
-    def remove_leader(server_id):
-        try:
-            with sqlite3.connect('users.db') as conn:
-                cursor = conn.cursor()
-                cursor.execute('UPDATE servers SET isLeader = False WHERE isLeader = True')
-                conn.commit()
-                return
-        except Exception as e:
-            print(f"Unexpected error removing leader: {str(e)}")
-            return 
+    # def remove_leader(server_id):
+    #     try:
+    #         with sqlite3.connect('users.db') as conn:
+    #             cursor = conn.cursor()
+    #             cursor.execute('UPDATE servers SET isLeader = False WHERE isLeader = True')
+    #             conn.commit()
+    #             return
+    #     except Exception as e:
+    #         print(f"Unexpected error removing leader: {str(e)}")
+    #         return 
 
-    def add_server(server_id, ip, port):
-        try:
-            with sqlite3.connect('users.db') as conn:
-                cursor = conn.cursor()
-                cursor.execute('INSERT INTO servers (server_id, ip, port) VALUES (?, ?, ?)', (server_id, ip, port))
-                conn.commit()
-                return
-        except Exception as e:
-            print(f"Unexpected error while adding server to database: {str(e)}")
-            return
+    # def add_server(server_id, ip, port):
+    #     try:
+    #         with sqlite3.connect('users.db') as conn:
+    #             cursor = conn.cursor()
+    #             cursor.execute('INSERT INTO servers (server_id, ip, port) VALUES (?, ?, ?)', (server_id, ip, port))
+    #             conn.commit()
+    #             return
+    #     except Exception as e:
+    #         print(f"Unexpected error while adding server to database: {str(e)}")
+    #         return
 
-    def remove_server(server_id):
-        try:
-            with sqlite3.connect('users.db') as conn:
-                cursor = conn.cursor()
-                cursor.execute('DELETE FROM servers WHERE server_id = ?', (server_id,))
-                conn.commit()
-                return
-        except Exception as e:
-            print(f"Unexpected error removing server: {str(e)}")
-            return
+    # def remove_server(server_id):
+    #     try:
+    #         with sqlite3.connect('users.db') as conn:
+    #             cursor = conn.cursor()
+    #             cursor.execute('DELETE FROM servers WHERE server_id = ?', (server_id,))
+    #             conn.commit()
+    #             return
+    #     except Exception as e:
+    #         print(f"Unexpected error removing server: {str(e)}")
+    #         return

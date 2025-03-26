@@ -50,7 +50,6 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
         self.heartbeatThread = threading.Thread(target=self._heartbeat, daemon=True)
         self.leader = defaultdict(dict)
 
-
         print("IP CONNECT", ip_connect)
         print("PORT CONNECT", port_connect)
         # If we are the leader:
@@ -487,11 +486,15 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
         self.heartbeatThread.start()
 
     def GetServers(self, request, context):
-        servers = DatabaseManager.get_servers()
-        print("servers:", servers)
-        for server in servers:
-            if not request.requestor_id == server["server_id"]:
-                serialized_server = service_pb2.ServerInfoResponse(id=server["server_id"], ip=server["ip"], port=server["port"])
+        # servers = DatabaseManager.get_servers()
+        # print("servers:", servers)
+        # for server in servers:
+        #     if not request.requestor_id == server["server_id"]:
+        #         serialized_server = service_pb2.ServerInfoResponse(id=server["server_id"], ip=server["ip"], port=server["port"])
+        #         yield serialized_server
+        for server_id, info in self.servers.items():
+            if not request.requestor_id == server_id:
+                serialized_server = service_pb2.ServerInfoResponse(id=server_id, ip=info["ip"], port=info["port"])
                 yield serialized_server
 
     def NewReplica(self, request, context):
@@ -499,7 +502,7 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
         # Do a couple of things
         #       1: Update this server in SQL db
         #       2: Add this server to list of current servers
-        DatabaseManager.add_server(request.new_replica_id, request.ip_addr, request.port)
+        # DatabaseManager.add_server(request.new_replica_id, request.ip_addr, request.port)
         
         channel = grpc.insecure_channel(f'{request.ip_addr}:{request.port}')
         stub = service_pb2_grpc.MessageServerStub(channel)
@@ -520,15 +523,15 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
     def Heartbeat(self, request, context):
         requestor_id = request.requestor_id
         server_id = request.server_id
-        logger.info(f"Heartbeat requested from server: {requestor_id} reaching out to server: {server_id}")
+        # logger.info(f"Heartbeat requested from server: {requestor_id} reaching out to server: {server_id}")
         self.update_heartbeat(requestor_id)
         return service_pb2.HeartbeatResponse(status="Heartbeat received")
 
     def update_heartbeat(self, id):
-        print(id)
+        # print(id)
         # Update heartbeat timestamp for the server
         self.servers[id]["heartbeat"] = datetime.now()
-        logger.info(f"Heartbeat from {id} updated at {self.servers[id]}")
+        # logger.info(f"Heartbeat from {id} updated at {self.servers[id]}")
 
     def _heartbeat(self):
         if self.leader["id"] == self.server_id:
@@ -572,7 +575,7 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
         
         for id in failed_replicas:
             del self.servers[id]
-            DatabaseManager.remove_server(server_id)
+            # DatabaseManager.remove_server(server_id)
             if id == self.leader["id"]:
                 # If we have lost the leader, then we must facilitate a new leader election!
                 self.run_election()
