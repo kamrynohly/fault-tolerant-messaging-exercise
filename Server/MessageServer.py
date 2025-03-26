@@ -437,12 +437,12 @@ class MessageServer(service_pb2_grpc.MessageServerServicer):
                 for id in self.servers:
                     self.servers[id]["stub"].MonitorMessages(new_request)
 
-            original_leader = self.leader["id"]
+            # original_leader = self.leader["id"]
             while True:
                 # We should check if there have been updates to the leader.
                 # In that event, we want to shut down the stream, as it will be restarted.
-                if self.leader["id"] != original_leader:
-                    break
+                # if self.leader["id"] != original_leader:
+                #     break
 
                 # If we have a message ready to send, verify our status and yield the message to the stream.
                 if len(self.message_queue[request.username]) > 0:
